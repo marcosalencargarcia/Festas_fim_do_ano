@@ -7,17 +7,34 @@ let estado = null;
 let ocupado = false;
 let desejos = [];
 
+// ===== Código da família (guardado neste aparelho para não pedir toda vez) =====
+const CHAVE_CODIGO = 'amigo-secreto-codigo';
+let codigoFamilia = lerCodigo();
+
+function lerCodigo() {
+  try { return localStorage.getItem(CHAVE_CODIGO) || ''; } catch { return ''; }
+}
+
+function salvarCodigo(codigo) {
+  try {
+    if (codigo) localStorage.setItem(CHAVE_CODIGO, codigo);
+    else localStorage.removeItem(CHAVE_CODIGO);
+  } catch { /* sem armazenamento: pede o código a cada visita */ }
+}
+
+class ErroCodigo extends Error {}
+
 // ===== Comunicação com o backend =====
 const api = API_URL ? {
   async estado() {
-    return tratar(await fetch(API_URL, { cache: 'no-store' }));
+    return this.chamar('estado');
   },
   async chamar(action, dados = {}) {
     // text/plain evita a requisição "preflight" de CORS, que o Apps Script não aceita.
     return tratar(await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, ...dados }),
+      body: JSON.stringify({ action, codigo: codigoFamilia, ...dados }),
     }));
   },
 } : criarApiDemo();
@@ -25,8 +42,20 @@ const api = API_URL ? {
 async function tratar(res) {
   if (!res.ok) throw new Error('Falha de conexão com o servidor.');
   const json = await res.json();
+  if (json.codigoInvalido) throw new ErroCodigo(json.error);
   if (!json.ok) throw new Error(json.error);
   return json.data;
+}
+
+function bloquear(mensagem) {
+  codigoFamilia = '';
+  salvarCodigo('');
+  estado = null;
+  document.body.classList.add('bloqueado');
+  const status = $('#status');
+  status.textContent = '🔒 Acesso restrito';
+  status.className = 'status';
+  if (mensagem) toast(mensagem, true);
 }
 
 // ===== Renderização =====
@@ -118,7 +147,8 @@ async function executar(fn, sucesso) {
     if (sucesso) toast(typeof sucesso === 'function' ? sucesso(resultado) : sucesso);
     return resultado;
   } catch (err) {
-    toast(err.message || 'Algo deu errado.', true);
+    if (err instanceof ErroCodigo) bloquear(err.message);
+    else toast(err.message || 'Algo deu errado.', true);
   } finally {
     ocupado = false;
     document.querySelectorAll('button').forEach(b => { b.disabled = false; });
@@ -128,11 +158,30 @@ async function executar(fn, sucesso) {
 async function carregar(silencioso) {
   try {
     estado = await api.estado();
+    document.body.classList.remove('bloqueado');
     render();
+    return true;
   } catch (err) {
-    if (!silencioso) toast('Não foi possível carregar os dados: ' + err.message, true);
+    if (err instanceof ErroCodigo) bloquear(err.message);
+    else if (!silencioso) toast('Não foi possível carregar os dados: ' + err.message, true);
+    return false;
   }
 }
+
+$('#form-portao').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.target;
+  const botao = form.querySelector('button');
+  codigoFamilia = form.codigo.value.trim();
+  botao.disabled = true;
+  const ok = await carregar();
+  botao.disabled = false;
+  if (ok) {
+    salvarCodigo(codigoFamilia);
+    form.reset();
+    toast('Bem-vindo(a)! 🎄');
+  }
+});
 
 $('#form-participante').addEventListener('submit', async e => {
   e.preventDefault();
@@ -357,7 +406,9 @@ function criarApiDemo() {
 
 // ===== Início =====
 $('#aviso-demo').hidden = !!API_URL;
-carregar();
+if (API_URL && !codigoFamilia) bloquear();
+else carregar();
 // Atualiza a lista de tempos em tempos para mostrar o que os outros adicionaram.
-setInterval(() => { if (!document.hidden && !ocupado) carregar(true); }, 30000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !ocupado) carregar(true); });
+const podeAtualizar = () => !document.hidden && !ocupado && (codigoFamilia || !API_URL);
+setInterval(() => { if (podeAtualizar()) carregar(true); }, 30000);
+document.addEventListener('visibilitychange', () => { if (podeAtualizar()) carregar(true); });

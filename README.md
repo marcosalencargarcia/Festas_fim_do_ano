@@ -14,6 +14,12 @@ Página para a família se cadastrar no amigo secreto (nome, e-mail e desejos), 
 - As comidas são divididas da forma mais equilibrada possível, e essa divisão aparece para todos na página.
 - Depois do sorteio, o cadastro fica fechado. Se alguém perder o e-mail, pode pedir na própria página para reenviar.
 
+**Segurança**
+- A página pede um **código da família** antes de mostrar ou alterar qualquer coisa. Mande o código junto com o link.
+- Depois de 5 PINs errados, o sorteio fica bloqueado por 15 minutos.
+- Cada e-mail só pode pedir um reenvio a cada 10 minutos.
+- O PIN e o código da família ficam **só no editor do Apps Script**. No GitHub, o `Code.gs` tem apenas os valores provisórios `troque-este-pin` e `troque-este-codigo`.
+
 > Sem a `API_URL` configurada, a página abre em **modo demonstração**: os dados ficam só no seu navegador, nenhum e-mail é enviado (o resultado aparece no console, F12) e o PIN de teste é `1234`. Serve para conhecer a página antes de configurar.
 
 ---
@@ -27,6 +33,7 @@ Página para a família se cadastrar no amigo secreto (nome, e-mail e desejos), 
 3. Apague o conteúdo do arquivo `Código.gs` e cole **todo** o conteúdo de [`backend/Code.gs`](backend/Code.gs).
 4. No topo do arquivo, troque:
    - `PIN_ORGANIZADOR`: uma senha só sua, necessária para sortear ou desfazer o sorteio.
+   - `CODIGO_FAMILIA`: a palavra que você manda para a família junto com o link.
    - `NOME_EVENTO`: aparece no e-mail e na página, se quiser personalizar.
 5. Clique em 💾 **Salvar**.
 
@@ -55,7 +62,7 @@ Escolha uma opção gratuita:
 - **Netlify:** crie uma conta em <https://app.netlify.com/drop> e arraste a pasta do projeto. Você recebe um link para mandar no grupo da família.
 - **GitHub Pages:** suba os arquivos num repositório e ative *Settings → Pages*.
 
-> A pasta `backend/` não precisa ir junto, mas também não tem problema se for. Só lembre que o PIN está escrito nela. Para não arriscar, publique apenas `index.html`, `style.css` e `app.js`.
+> A pasta `backend/` pode ir junto sem problema, desde que o `Code.gs` do repositório continue com os valores provisórios. Os valores reais ficam só no editor do Apps Script.
 
 ---
 
@@ -65,7 +72,8 @@ Escolha uma opção gratuita:
 3. Pronto: cada um recebe o e-mail. Avise a família para olhar também a caixa de **spam**.
 
 ## Dicas e observações
-- **Alterou o `Code.gs` depois de publicar?** Vá em **Implantar → Gerenciar implantações → ✏ Editar → Versão: Nova versão → Implantar**. Assim a URL continua a mesma.
+- **Alterou o `Code.gs` depois de publicar?** Ao colar no editor, mantenha as linhas do `PIN_ORGANIZADOR` e do `CODIGO_FAMILIA` com os valores reais. Depois vá em **Implantar → Gerenciar implantações → ✏ Editar → Versão: Nova versão → Implantar**. Assim a URL continua a mesma.
+- **Quer trocar o código da família?** Mude o `CODIGO_FAMILIA` no editor e publique uma nova versão como acima. Quem já tinha entrado vai precisar digitar o código novo.
 - **Limite do Gmail:** cerca de 100 e-mails por dia em contas comuns, mais que suficiente para a família.
 - **Precisa refazer o sorteio?** Na página, abra *Área do organizador → Desfazer sorteio* (pede o PIN). Um novo sorteio envia novos e-mails para todos.
 - **Sobre o sigilo:** os pares ficam guardados nas *Propriedades do script*, não na planilha. Assim você, como dono, também não vê o resultado sem querer. Só evite fuçar em *Configurações do projeto → Propriedades do script*. 😉

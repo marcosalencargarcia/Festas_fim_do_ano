@@ -3,7 +3,7 @@
  *
  * Resumo da instalação (detalhes no README.md):
  *  1. Crie uma Planilha Google > Extensões > Apps Script > cole este arquivo.
- *  2. Troque o PIN_ORGANIZADOR abaixo.
+ *  2. Troque o PIN_ORGANIZADOR e o CODIGO_FAMILIA abaixo (só no editor, nunca no GitHub).
  *  3. Execute a função "configurar" uma vez (autoriza o acesso e envia um e-mail de teste).
  *  4. Implantar > Nova implantação > App da Web
  *     (Executar como: Eu | Quem pode acessar: Qualquer pessoa).
@@ -13,8 +13,14 @@
 // ID da planilha (o trecho entre /d/ e /edit no link). Vazio = planilha à qual o script está vinculado.
 const PLANILHA_ID = '18u4HrPgxrmv8LWrZB64TsVd-qFQVN8Uu3fSnftGQ3RQ';
 const PIN_ORGANIZADOR = 'troque-este-pin';
+// Palavra combinada enviada à família junto com o link. Sem ela, a página não mostra nem altera nada.
+const CODIGO_FAMILIA = 'troque-este-codigo';
 const NOME_EVENTO = 'Festas de Fim de Ano da Família';
 const MIN_PARTICIPANTES = 3;
+
+const MAX_TENTATIVAS_PIN = 5;
+const BLOQUEIO_PIN_SEG = 15 * 60;
+const INTERVALO_REENVIO_SEG = 10 * 60;
 
 const ABA_PARTICIPANTES = 'Participantes';
 const ABA_ALIMENTOS = 'Alimentos';
@@ -22,12 +28,21 @@ const PROP_SORTEIO = 'sorteio'; // JSON { pares: { idQuemDa: idQuemRecebe }, dat
 
 // ===== Entrada HTTP =====
 function doGet() {
-  return responder(() => estado());
+  return json({ ok: false, error: 'Acesse pela página do amigo secreto.' });
 }
 
 function doPost(e) {
+  let req = {};
+  try {
+    req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (err) { /* corpo inválido: cai na checagem do código abaixo */ }
+
+  if (String(req.codigo || '') !== CODIGO_FAMILIA) {
+    return json({ ok: false, error: 'Código da família incorreto.', codigoInvalido: true });
+  }
+
   return responder(() => {
-    const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (req.action === 'estado') return estado();
     const acoes = {
       addParticipante, removerParticipante, addAlimento, removerAlimento,
       sortear, reenviar, desfazerSorteio,
@@ -39,13 +54,15 @@ function doPost(e) {
 }
 
 function responder(fn) {
-  let saida;
   try {
-    saida = { ok: true, data: fn() };
+    return json({ ok: true, data: fn() });
   } catch (err) {
-    saida = { ok: false, error: err.message };
+    return json({ ok: false, error: err.message });
   }
-  return ContentService.createTextOutput(JSON.stringify(saida))
+}
+
+function json(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -149,7 +166,13 @@ function reenviar(req) {
   const participantes = lerParticipantes();
   const quem = participantes.find(p => p.email === email);
   if (!quem) throw new Error('Este e-mail não está entre os participantes.');
+
+  // Limita os reenvios para ninguém lotar a caixa de um parente (nem gastar a cota do Gmail).
+  const cache = CacheService.getScriptCache();
+  const chave = 'reenvio:' + email;
+  if (cache.get(chave)) throw new Error('Já reenviamos para este e-mail há pouco. Aguarde 10 minutos.');
   enviarResultado(quem, participantes, sorteio.pares, lerAlimentos());
+  cache.put(chave, '1', INTERVALO_REENVIO_SEG);
   return { enviado: true };
 }
 
@@ -281,8 +304,18 @@ function exigirCadastroAberto() {
   if (lerSorteio()) throw new Error('O sorteio já foi realizado — o cadastro está fechado.');
 }
 
+// Após MAX_TENTATIVAS_PIN erros seguidos, bloqueia o PIN por BLOQUEIO_PIN_SEG (contra quem tenta adivinhar).
 function exigirPin(pin) {
-  if (String(pin || '') !== PIN_ORGANIZADOR) throw new Error('PIN do organizador incorreto.');
+  const cache = CacheService.getScriptCache();
+  const falhas = Number(cache.get('falhasPin') || 0);
+  if (falhas >= MAX_TENTATIVAS_PIN) {
+    throw new Error('Muitas tentativas de PIN erradas. Aguarde 15 minutos e tente de novo.');
+  }
+  if (String(pin || '') !== PIN_ORGANIZADOR) {
+    cache.put('falhasPin', String(falhas + 1), BLOQUEIO_PIN_SEG);
+    throw new Error('PIN do organizador incorreto.');
+  }
+  cache.remove('falhasPin');
 }
 
 function texto(valor, max) {

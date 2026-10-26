@@ -260,6 +260,11 @@ input:focus { outline: 2px solid var(--dourado); outline-offset: 1px; border-col
 
 .sorteado .so-aberto { display: none; }
 
+/* Sem o código da família, só a tela de entrada aparece. */
+body:not(.bloqueado) .portao,
+.bloqueado .cartao:not(.portao) { display: none; }
+.portao { border-top: 4px solid var(--dourado); }
+
 @media (max-width: 480px) {
   .cartao { padding: 18px 16px; }
   .form--linha .btn { flex: 1 1 100%; }
