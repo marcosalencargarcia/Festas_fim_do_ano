@@ -126,7 +126,7 @@ function render() {
 }
 
 // Só redesenha o chat quando chega algo novo, para não pular a rolagem de quem está lendo.
-let assinaturaChat = '';
+let assinaturaChat = null;
 function renderMensagens(mensagens) {
   const assinatura = mensagens.map(m => m.id).join(',');
   if (assinatura === assinaturaChat) return;
@@ -427,7 +427,7 @@ $('#form-chat').addEventListener('submit', async e => {
   salvarLocal(CHAVE_NOME, nome);
   const ok = await executar(async () => {
     estado = await api.chamar('enviarMensagem', { nome, texto: form.texto.value });
-    assinaturaChat = ''; // força redesenhar para marcar a mensagem como "minha"
+    assinaturaChat = null; // força redesenhar para marcar a mensagem como "minha"
     render();
     const lista = $('#lista-mensagens');
     lista.scrollTop = lista.scrollHeight;
