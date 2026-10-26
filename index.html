@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amigo Secreto & Ceia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="topo__conteudo">
+      <p class="topo__sobre" id="evento">Festas de Fim de Ano</p>
+      <h1>Amigo Secreto <span>&</span> Ceia</h1>
+      <p class="topo__sub">Cadastre-se, conte o que gostaria de ganhar e ajude a montar a lista da ceia.</p>
+      <span id="status" class="status">Carregando…</span>
+    </div>
+  </header>
+
+  <main class="conteudo">
+    <div id="aviso-demo" class="aviso" hidden>
+      <strong>Modo demonstração.</strong> Os dados ficam só neste navegador e nenhum e-mail é enviado
+      (o resultado aparece no console). PIN de teste: <code>1234</code>.
+      Para usar de verdade, configure a <code>API_URL</code> em <code>app.js</code> (veja o README).
+    </div>
+
+    <section class="cartao">
+      <div class="cartao__cabeca">
+        <h2>🎁 Participantes</h2>
+        <span class="contador" id="cont-participantes">0</span>
+      </div>
+
+      <form id="form-participante" class="form so-aberto">
+        <div class="form__grade">
+          <label class="campo">
+            <span class="campo__rotulo">Nome</span>
+            <input name="nome" required maxlength="60" autocomplete="name" placeholder="Ex.: Maria">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">E-mail <small>(para receber o resultado)</small></span>
+            <input name="email" type="email" required maxlength="120" autocomplete="email" placeholder="maria@gmail.com">
+          </label>
+        </div>
+        <div class="campo">
+          <span class="campo__rotulo">O que gostaria de ganhar <small>(uma ou mais opções — Enter para adicionar)</small></span>
+          <div class="tags" id="tags-desejos">
+            <input id="input-desejo" maxlength="100" placeholder="Ex.: livro, perfume, vale-presente…" aria-label="Adicionar desejo">
+          </div>
+        </div>
+        <button class="btn btn--primario" type="submit">Cadastrar</button>
+      </form>
+
+      <ul id="lista-participantes" class="lista"></ul>
+    </section>
+
+    <section class="cartao">
+      <div class="cartao__cabeca">
+        <h2>🍗 Ceia — o que levar</h2>
+        <span class="contador" id="cont-alimentos">0</span>
+      </div>
+      <p class="dica so-aberto">Qualquer pessoa pode adicionar ou remover itens. No sorteio, eles são divididos entre os participantes.</p>
+
+      <form id="form-alimento" class="form form--linha so-aberto">
+        <input name="item" required maxlength="80" placeholder="Ex.: farofa, pudim, refrigerante 2L" aria-label="Alimento">
+        <button class="btn btn--primario" type="submit">Adicionar</button>
+      </form>
+
+      <ul id="lista-alimentos" class="lista lista--chips"></ul>
+      <div id="divisao-alimentos" class="divisao" hidden></div>
+    </section>
+
+    <section class="cartao cartao--sorteio">
+      <div class="cartao__cabeca"><h2>🎲 Sorteio</h2></div>
+
+      <div id="sorteio-aberto">
+        <p id="resumo-sorteio" class="resumo"></p>
+        <form id="form-sortear" class="form form--linha">
+          <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+          <button class="btn btn--festa" type="submit">Realizar sorteio</button>
+        </form>
+        <p class="dica">Ninguém vê o resultado do amigo secreto aqui, nem quem clicou no botão. Cada pessoa recebe o seu por e-mail.</p>
+      </div>
+
+      <div id="sorteio-feito" hidden>
+        <p class="resumo">✅ Sorteio realizado em <strong id="data-sorteio"></strong>. Cada participante recebeu um e-mail com o seu amigo secreto e o que levar para a ceia.</p>
+
+        <h3>Não recebeu ou apagou o e-mail?</h3>
+        <p class="dica">Confira também a caixa de spam. Ou peça para reenviar:</p>
+        <form id="form-reenviar" class="form form--linha">
+          <input name="email" type="email" required placeholder="Seu e-mail cadastrado" aria-label="Seu e-mail cadastrado">
+          <button class="btn" type="submit">Reenviar meu resultado</button>
+        </form>
+
+        <details class="organizador">
+          <summary>Área do organizador</summary>
+          <p class="dica">Desfazer o sorteio reabre o cadastro. Um novo sorteio enviará novos e-mails para todos.</p>
+          <form id="form-desfazer" class="form form--linha">
+            <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+            <button class="btn btn--perigo" type="submit">Desfazer sorteio</button>
+          </form>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="rodape">Feito com carinho para a família 🎄</footer>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

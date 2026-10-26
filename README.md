@@ -1,0 +1,71 @@
+# 🎄 Amigo Secreto & Ceia
+
+Página para a família se cadastrar no amigo secreto (nome, e-mail e desejos), montar a lista de comidas da ceia e fazer o sorteio. Cada pessoa recebe **por e-mail** quem tirou e o que deve levar.
+
+## Como funciona
+
+| Parte | O que é |
+|---|---|
+| `index.html`, `style.css`, `app.js` | A página que todos acessam |
+| `backend/Code.gs` | Código que roda no Google (Apps Script): guarda os dados numa Planilha Google, faz o sorteio e envia os e-mails pelo seu Gmail |
+
+- O sorteio acontece **no servidor do Google**. O resultado do amigo secreto nunca aparece na página, nem para quem clicou no botão.
+- Ninguém tira a si mesmo, e todos dão e recebem exatamente um presente.
+- As comidas são divididas da forma mais equilibrada possível, e essa divisão aparece para todos na página.
+- Depois do sorteio, o cadastro fica fechado. Se alguém perder o e-mail, pode pedir na própria página para reenviar.
+
+> Sem a `API_URL` configurada, a página abre em **modo demonstração**: os dados ficam só no seu navegador, nenhum e-mail é enviado (o resultado aparece no console, F12) e o PIN de teste é `1234`. Serve para conhecer a página antes de configurar.
+
+---
+
+## Passo a passo da configuração (uns 10 minutos)
+
+### 1. Criar a planilha e o script
+1. A planilha já existe: [Amigo Secreto 2026](https://docs.google.com/spreadsheets/d/18u4HrPgxrmv8LWrZB64TsVd-qFQVN8Uu3fSnftGQ3RQ/edit). O ID dela já está em `PLANILHA_ID` no `Code.gs`.
+   - Para usar outra planilha, troque o `PLANILHA_ID` pelo trecho entre `/d/` e `/edit` do link dela.
+2. Abra a planilha e vá em **Extensões → Apps Script**. Também funciona criar um projeto avulso em <https://script.new>.
+3. Apague o conteúdo do arquivo `Código.gs` e cole **todo** o conteúdo de [`backend/Code.gs`](backend/Code.gs).
+4. No topo do arquivo, troque:
+   - `PIN_ORGANIZADOR`: uma senha só sua, necessária para sortear ou desfazer o sorteio.
+   - `NOME_EVENTO`: aparece no e-mail e na página, se quiser personalizar.
+5. Clique em 💾 **Salvar**.
+
+### 2. Autorizar (uma vez)
+1. Na barra de cima, escolha a função **`configurar`** e clique em **▶ Executar**.
+2. O Google vai pedir autorização. Escolha sua conta, clique em **Avançado → Acessar (não seguro)** e depois em **Permitir**. O aviso aparece porque o script é seu e não passou pela verificação do Google, o que é normal.
+3. Você vai receber um e-mail de teste, e a planilha ganha as abas **Participantes** e **Alimentos**.
+
+### 3. Publicar como App da Web
+1. Clique em **Implantar → Nova implantação**.
+2. Na engrenagem ⚙, escolha **App da Web**.
+3. Preencha:
+   - **Executar como:** *Eu (seu e-mail)*
+   - **Quem pode acessar:** *Qualquer pessoa*
+4. Clique em **Implantar** e copie a **URL do app da Web**. Ela termina em `/exec`.
+
+### 4. Ligar a página ao script
+Abra o `app.js` e cole a URL na primeira linha:
+
+```js
+const API_URL = 'https://script.google.com/macros/s/AKfy.../exec';
+```
+
+### 5. Colocar a página no ar (para a família acessar pelo celular)
+Escolha uma opção gratuita:
+- **Netlify:** crie uma conta em <https://app.netlify.com/drop> e arraste a pasta do projeto. Você recebe um link para mandar no grupo da família.
+- **GitHub Pages:** suba os arquivos num repositório e ative *Settings → Pages*.
+
+> A pasta `backend/` não precisa ir junto, mas também não tem problema se for. Só lembre que o PIN está escrito nela. Para não arriscar, publique apenas `index.html`, `style.css` e `app.js`.
+
+---
+
+## No dia do sorteio
+1. Confira na página se todos estão cadastrados e se a lista de comidas está completa.
+2. Digite o PIN do organizador e clique em **Realizar sorteio**.
+3. Pronto: cada um recebe o e-mail. Avise a família para olhar também a caixa de **spam**.
+
+## Dicas e observações
+- **Alterou o `Code.gs` depois de publicar?** Vá em **Implantar → Gerenciar implantações → ✏ Editar → Versão: Nova versão → Implantar**. Assim a URL continua a mesma.
+- **Limite do Gmail:** cerca de 100 e-mails por dia em contas comuns, mais que suficiente para a família.
+- **Precisa refazer o sorteio?** Na página, abra *Área do organizador → Desfazer sorteio* (pede o PIN). Um novo sorteio envia novos e-mails para todos.
+- **Sobre o sigilo:** os pares ficam guardados nas *Propriedades do script*, não na planilha. Assim você, como dono, também não vê o resultado sem querer. Só evite fuçar em *Configurações do projeto → Propriedades do script*. 😉
