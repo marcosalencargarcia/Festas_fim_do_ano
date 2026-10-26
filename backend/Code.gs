@@ -26,8 +26,12 @@ const INTERVALO_REENVIO_SEG = 10 * 60;
 const VALIDADE_LINK_SEG = 6 * 60 * 60; // máximo permitido pelo CacheService
 const INTERVALO_LINK_SEG = 5 * 60;
 
+const MAX_MENSAGENS = 50;
+const INTERVALO_MENSAGEM_SEG = 3;
+
 const ABA_PARTICIPANTES = 'Participantes';
 const ABA_ALIMENTOS = 'Alimentos';
+const ABA_MENSAGENS = 'Mensagens';
 const PROP_SORTEIO = 'sorteio'; // JSON { pares: { idQuemDa: idQuemRecebe }, data }
 
 // ===== Entrada HTTP =====
@@ -51,6 +55,7 @@ function doPost(e) {
       addParticipante, removerParticipante, addAlimento, removerAlimento,
       sortear, reenviar, desfazerSorteio,
       pedirLinkEdicao, abrirEdicao, salvarDesejos, removerMeuCadastro,
+      escolherAlimento, soltarAlimento, enviarMensagem, apagarMensagem,
     };
     const acao = acoes[req.action];
     if (!acao) throw new Error('Ação desconhecida.');
@@ -117,7 +122,32 @@ function addAlimento(req) {
 
 function removerAlimento(req) {
   exigirCadastroAberto();
+  const alimento = lerAlimentos().find(a => a.id === String(req.id));
+  const dono = alimento && lerParticipantes().find(p => p.id === alimento.escolhidoPor);
+  if (dono) throw new Error(`${dono.nome} já escolheu levar este item. Solte-o antes de remover.`);
   removerLinhaPorId(abaAlimentos(), String(req.id));
+  return estado();
+}
+
+// "Eu levo": a pessoa reserva o item para si. O sorteio respeita essa escolha.
+function escolherAlimento(req) {
+  exigirCadastroAberto();
+  const pessoa = lerParticipantes().find(p => p.id === String(req.participanteId));
+  if (!pessoa) throw new Error('Escolha um participante cadastrado.');
+  const alimento = lerAlimentos().find(a => a.id === String(req.id));
+  if (!alimento) throw new Error('Este item não está mais na lista.');
+  const dono = lerParticipantes().find(p => p.id === alimento.escolhidoPor);
+  if (dono && dono.id !== pessoa.id) throw new Error(`${dono.nome} já vai levar este item.`);
+
+  const sh = abaAlimentos();
+  sh.getRange(linhaPorId(sh, alimento.id), 5).setValue(pessoa.id);
+  return estado();
+}
+
+function soltarAlimento(req) {
+  exigirCadastroAberto();
+  const sh = abaAlimentos();
+  sh.getRange(linhaPorId(sh, String(req.id)), 5).clearContent();
   return estado();
 }
 
@@ -139,12 +169,29 @@ function sortear(req) {
   const pares = {};
   ordem.forEach((id, i) => { pares[id] = ordem[(i + 1) % ordem.length]; });
 
-  // Alimentos: rodízio sobre itens e pessoas em ordem aleatória, o mais equilibrado possível.
+  // Alimentos: quem escolheu ("Eu levo") fica com o item. O resto vai, um a um, para quem
+  // tem menos itens até então (empate decidido ao acaso), equilibrando o total de cada um.
   const sh = abaAlimentos();
   const dados = sh.getDataRange().getValues();
-  const pessoas = embaralhar(participantes.map(p => p.id));
-  const linhas = embaralhar(dados.map((_, i) => i).filter(i => i > 0 && dados[i][0]));
-  linhas.forEach((linha, i) => { dados[linha][2] = pessoas[i % pessoas.length]; });
+  const contagem = {};
+  participantes.forEach(p => { contagem[p.id] = 0; });
+  const livres = [];
+  dados.forEach((r, i) => {
+    if (i === 0 || !r[0]) return;
+    const dono = String(r[4] || '');
+    if (dono in contagem) {
+      r[2] = dono;
+      contagem[dono]++;
+    } else {
+      livres.push(i);
+    }
+  });
+  embaralhar(livres).forEach(linha => {
+    const candidatos = embaralhar(Object.keys(contagem));
+    const escolhido = candidatos.reduce((menor, id) => (contagem[id] < contagem[menor] ? id : menor));
+    dados[linha][2] = escolhido;
+    contagem[escolhido]++;
+  });
   if (dados.length > 1) {
     sh.getRange(2, 3, dados.length - 1, 1).setValues(dados.slice(1).map(r => [r[2]]));
   }
@@ -248,6 +295,29 @@ function removerMeuCadastro(req) {
   return estado();
 }
 
+// ===== Mini chat =====
+function enviarMensagem(req) {
+  const nome = texto(req.nome, 40);
+  const mensagem = texto(req.texto, 300);
+  if (!nome) throw new Error('Informe seu nome.');
+  if (!mensagem) throw new Error('Escreva uma mensagem.');
+
+  // Evita mensagens repetidas por clique duplo ou alguém apertando Enter sem parar.
+  const cache = CacheService.getScriptCache();
+  const chave = 'msg:' + nome.toLowerCase();
+  if (cache.get(chave)) throw new Error('Calma! Espere uns segundos para mandar outra mensagem.');
+  cache.put(chave, '1', INTERVALO_MENSAGEM_SEG);
+
+  abaMensagens().appendRow([Utilities.getUuid(), celula(nome), celula(mensagem), new Date()]);
+  return estado();
+}
+
+function apagarMensagem(req) {
+  exigirPin(req.pin);
+  removerLinhaPorId(abaMensagens(), String(req.id));
+  return estado();
+}
+
 function participantePorToken(token) {
   const id = CacheService.getScriptCache().get('edicao:' + String(token || ''));
   const p = id && lerParticipantes().find(x => x.id === id);
@@ -271,8 +341,12 @@ function estado() {
       id: p.id, nome: p.nome, email: mascarar(p.email), desejos: p.desejos,
     })),
     alimentos: lerAlimentos().map(a => ({
-      id: a.id, item: a.item, responsavel: sorteio ? (nomes[a.responsavelId] || '') : '',
+      id: a.id,
+      item: a.item,
+      escolhidoPor: nomes[a.escolhidoPor] || '',
+      responsavel: sorteio ? (nomes[a.responsavelId] || '') : '',
     })),
+    mensagens: lerMensagens(),
   };
 }
 
@@ -335,7 +409,14 @@ function abaParticipantes() {
 }
 
 function abaAlimentos() {
-  return aba(ABA_ALIMENTOS, ['id', 'item', 'responsavelId', 'criadoEm']);
+  const sh = aba(ABA_ALIMENTOS, ['id', 'item', 'responsavelId', 'criadoEm', 'escolhidoPor']);
+  // Planilhas criadas antes do "Eu levo" não têm a 5ª coluna no cabeçalho.
+  if (sh.getRange(1, 5).getValue() !== 'escolhidoPor') sh.getRange(1, 5).setValue('escolhidoPor');
+  return sh;
+}
+
+function abaMensagens() {
+  return aba(ABA_MENSAGENS, ['id', 'nome', 'texto', 'criadoEm']);
 }
 
 function aba(nome, cabecalho) {
@@ -364,7 +445,14 @@ function lerParticipantes() {
 
 function lerAlimentos() {
   return linhasComId(abaAlimentos()).map(r => ({
-    id: String(r[0]), item: String(r[1]), responsavelId: String(r[2] || ''),
+    id: String(r[0]), item: String(r[1]), responsavelId: String(r[2] || ''), escolhidoPor: String(r[4] || ''),
+  }));
+}
+
+function lerMensagens() {
+  return linhasComId(abaMensagens()).slice(-MAX_MENSAGENS).map(r => ({
+    id: String(r[0]), nome: String(r[1]), texto: String(r[2]),
+    quando: r[3] instanceof Date ? r[3].toISOString() : '',
   }));
 }
 
@@ -439,6 +527,7 @@ function esc(s) {
 function configurar() {
   abaParticipantes();
   abaAlimentos();
+  abaMensagens();
   const eu = Session.getEffectiveUser().getEmail();
   MailApp.sendEmail(eu, `Teste — ${NOME_EVENTO}`, 'Tudo certo! O sistema do amigo secreto já consegue enviar e-mails. 🎄');
   Logger.log('Pronto! Abas criadas e e-mail de teste enviado para ' + eu);

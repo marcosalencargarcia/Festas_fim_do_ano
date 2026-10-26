@@ -91,8 +91,13 @@ function render() {
   listaAlimentos.hidden = sorteado;
   listaAlimentos.innerHTML = alimentos.length
     ? alimentos.map(a => `
-      <li class="chip">${esc(a.item)}
-        <button data-remover-alimento="${esc(a.id)}" title="Remover ${esc(a.item)}" aria-label="Remover ${esc(a.item)}">×</button>
+      <li class="comida">
+        <span class="comida__item">${esc(a.item)}</span>
+        ${a.escolhidoPor
+          ? `<span class="comida__dono">🙋 ${esc(a.escolhidoPor)} leva</span>
+             <button class="btn-mini" data-soltar="${esc(a.id)}" title="Devolver ${esc(a.item)} para o sorteio">Soltar</button>`
+          : `<button class="btn-mini btn-mini--levar" data-levar="${esc(a.id)}">🙋 Eu levo</button>`}
+        <button class="remover" data-remover-alimento="${esc(a.id)}" title="Remover ${esc(a.item)}" aria-label="Remover ${esc(a.item)}">×</button>
       </li>`).join('')
     : '<li class="lista__vazia">Nenhum item na lista ainda.</li>';
 
@@ -100,12 +105,14 @@ function render() {
   divisao.hidden = !sorteado;
   if (sorteado) {
     divisao.innerHTML = participantes.map(p => {
-      const itens = alimentos.filter(a => a.responsavel === p.nome).map(a => a.item);
+      const itens = alimentos.filter(a => a.responsavel === p.nome);
       return `<div class="divisao__pessoa"><strong>${esc(p.nome)}</strong>${itens.length
-        ? `<ul>${itens.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`
+        ? `<ul>${itens.map(a => `<li>${esc(a.item)}${a.escolhidoPor === p.nome ? ' 🙋' : ''}</li>`).join('')}</ul>`
         : '<span class="vazio">Nada desta vez</span>'}</div>`;
     }).join('');
   }
+
+  renderMensagens(estado.mensagens || []);
 
   $('#sorteio-aberto').hidden = sorteado;
   $('#sorteio-feito').hidden = !sorteado;
@@ -116,6 +123,33 @@ function render() {
     $('#resumo-sorteio').innerHTML = `<strong>${participantes.length}</strong> participante(s) e <strong>${alimentos.length}</strong> item(ns) de comida.`
       + (faltam > 0 ? ` Faltam pelo menos ${faltam} participante(s) para sortear.` : ' Tudo pronto quando o organizador quiser!');
   }
+}
+
+// Só redesenha o chat quando chega algo novo, para não pular a rolagem de quem está lendo.
+let assinaturaChat = '';
+function renderMensagens(mensagens) {
+  const assinatura = mensagens.map(m => m.id).join(',');
+  if (assinatura === assinaturaChat) return;
+  assinaturaChat = assinatura;
+
+  const lista = $('#lista-mensagens');
+  const estavaNoFim = lista.scrollHeight - lista.scrollTop - lista.clientHeight < 40;
+  const meuNome = lerLocal(CHAVE_NOME).toLowerCase();
+  lista.innerHTML = mensagens.length
+    ? mensagens.map(m => {
+      const hora = m.quando ? new Date(m.quando).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      return `
+      <li class="mensagem${m.nome.toLowerCase() === meuNome ? ' mensagem--minha' : ''}">
+        <div class="mensagem__topo">
+          <span class="mensagem__nome">${esc(m.nome)}</span>
+          <span class="mensagem__hora">${esc(hora)}</span>
+          <button class="mensagem__apagar" data-apagar-mensagem="${esc(m.id)}" title="Apagar (organizador)" aria-label="Apagar mensagem">✕</button>
+        </div>
+        <div class="mensagem__texto">${esc(m.texto)}</div>
+      </li>`;
+    }).join('')
+    : '<li class="chat__vazio">Nenhum recado ainda. Que tal mandar um "Feliz Natal"? 🎄</li>';
+  if (estavaNoFim) lista.scrollTop = lista.scrollHeight;
 }
 
 // Campo de desejos: o que é digitado vira um chip ao apertar Enter (ou vírgula).
@@ -329,12 +363,91 @@ $('#form-alimento').addEventListener('submit', async e => {
 });
 
 $('#lista-alimentos').addEventListener('click', e => {
+  const levar = e.target.closest('[data-levar]');
+  if (levar) return abrirDialogoLevar(levar.dataset.levar);
+
+  const soltar = e.target.closest('[data-soltar]');
+  if (soltar) {
+    const a = estado.alimentos.find(x => x.id === soltar.dataset.soltar);
+    if (!a || !confirm(`Devolver "${a.item}" para o sorteio? (${a.escolhidoPor} não vai mais levar)`)) return;
+    executar(async () => {
+      estado = await api.chamar('soltarAlimento', { id: a.id });
+      render();
+    }, `"${a.item}" voltou para o sorteio.`);
+    return;
+  }
+
   const btn = e.target.closest('[data-remover-alimento]');
   if (!btn) return;
   executar(async () => {
     estado = await api.chamar('removerAlimento', { id: btn.dataset.removerAlimento });
     render();
   });
+});
+
+// ===== "Eu levo": escolher o próprio nome para um item =====
+const CHAVE_EU = 'amigo-secreto-eu';
+let itemParaLevar = null;
+
+function abrirDialogoLevar(idItem) {
+  itemParaLevar = estado.alimentos.find(a => a.id === idItem);
+  if (!itemParaLevar) return;
+  if (!estado.participantes.length) {
+    toast('Cadastre-se no amigo secreto primeiro para escolher um item.', true);
+    return;
+  }
+  const form = $('#form-levar');
+  const eu = lerLocal(CHAVE_EU);
+  form.pessoa.innerHTML = '<option value="">Escolha seu nome…</option>'
+    + estado.participantes.map(p => `<option value="${esc(p.id)}"${p.id === eu ? ' selected' : ''}>${esc(p.nome)}</option>`).join('');
+  $('#levar-item').textContent = `“${itemParaLevar.item}”`;
+  $('#dialogo-levar').showModal();
+}
+
+$('#form-levar').addEventListener('submit', e => {
+  if (!e.submitter || e.submitter.value !== 'ok') return; // Cancelar: o <dialog> só fecha
+  const pessoa = estado.participantes.find(p => p.id === e.target.pessoa.value);
+  const item = itemParaLevar;
+  if (!pessoa || !item) return;
+  salvarLocal(CHAVE_EU, pessoa.id);
+  executar(async () => {
+    estado = await api.chamar('escolherAlimento', { id: item.id, participanteId: pessoa.id });
+    render();
+  }, `Combinado! ${pessoa.nome} leva ${item.item}. 🙋`);
+});
+
+// ===== Mini chat =====
+const CHAVE_NOME = 'amigo-secreto-nome';
+$('#form-chat').nome.value = lerLocal(CHAVE_NOME);
+
+$('#form-chat').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.target;
+  const nome = form.nome.value.trim();
+  salvarLocal(CHAVE_NOME, nome);
+  const ok = await executar(async () => {
+    estado = await api.chamar('enviarMensagem', { nome, texto: form.texto.value });
+    assinaturaChat = ''; // força redesenhar para marcar a mensagem como "minha"
+    render();
+    const lista = $('#lista-mensagens');
+    lista.scrollTop = lista.scrollHeight;
+    return true;
+  });
+  if (ok) {
+    form.texto.value = '';
+    form.texto.focus();
+  }
+});
+
+$('#lista-mensagens').addEventListener('click', e => {
+  const btn = e.target.closest('[data-apagar-mensagem]');
+  if (!btn) return;
+  const pin = prompt('Apagar esta mensagem? Digite o PIN do organizador.');
+  if (!pin) return;
+  executar(async () => {
+    estado = await api.chamar('apagarMensagem', { id: btn.dataset.apagarMensagem, pin });
+    render();
+  }, 'Mensagem apagada.');
 });
 
 $('#form-sortear').addEventListener('submit', e => {
@@ -372,6 +485,14 @@ $('#form-desfazer').addEventListener('submit', e => {
 });
 
 // ===== Utilidades =====
+function lerLocal(chave) {
+  try { return localStorage.getItem(chave) || ''; } catch { return ''; }
+}
+
+function salvarLocal(chave, valor) {
+  try { localStorage.setItem(chave, valor); } catch { /* sem armazenamento: só não lembra */ }
+}
+
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -390,8 +511,9 @@ function toast(msg, erro = false) {
 function criarApiDemo() {
   const CHAVE = 'amigo-secreto-demo';
   const PIN = '1234';
-  let db = { participantes: [], alimentos: [], sorteio: null };
+  let db = { participantes: [], alimentos: [], mensagens: [], sorteio: null };
   try { db = JSON.parse(localStorage.getItem(CHAVE)) || db; } catch { /* sem armazenamento */ }
+  db.mensagens = db.mensagens || [];
   const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* ignora */ } };
   const id = () => Math.random().toString(36).slice(2, 10);
   const aberto = () => { if (db.sorteio) throw new Error('O sorteio já foi realizado — o cadastro está fechado.'); };
@@ -415,7 +537,11 @@ function criarApiDemo() {
         const [u, d] = p.email.split('@');
         return { id: p.id, nome: p.nome, email: `${u.slice(0, 2)}•••@${d}`, desejos: p.desejos };
       }),
-      alimentos: db.alimentos.map(a => ({ id: a.id, item: a.item, responsavel: db.sorteio ? nomes[a.responsavelId] || '' : '' })),
+      alimentos: db.alimentos.map(a => ({
+        id: a.id, item: a.item, escolhidoPor: nomes[a.escolhidoPor] || '',
+        responsavel: db.sorteio ? nomes[a.responsavelId] || '' : '',
+      })),
+      mensagens: db.mensagens.slice(-50),
     };
   };
   const enviar = p => {
@@ -476,6 +602,27 @@ function criarApiDemo() {
       aberto();
       db.alimentos = db.alimentos.filter(a => a.id !== alvo);
     },
+    escolherAlimento({ id: alvo, participanteId }) {
+      aberto();
+      const a = db.alimentos.find(x => x.id === alvo);
+      if (!a || !db.participantes.some(p => p.id === participanteId)) throw new Error('Item ou participante não encontrado.');
+      a.escolhidoPor = participanteId;
+    },
+    soltarAlimento({ id: alvo }) {
+      aberto();
+      const a = db.alimentos.find(x => x.id === alvo);
+      if (a) a.escolhidoPor = '';
+    },
+    enviarMensagem({ nome, texto }) {
+      nome = String(nome).trim().slice(0, 40);
+      texto = String(texto).trim().slice(0, 300);
+      if (!nome || !texto) throw new Error('Informe seu nome e a mensagem.');
+      db.mensagens.push({ id: id(), nome, texto, quando: new Date().toISOString() });
+    },
+    apagarMensagem({ id: alvo, pin: p }) {
+      pin(p);
+      db.mensagens = db.mensagens.filter(m => m.id !== alvo);
+    },
     sortear({ pin: p }) {
       pin(p);
       aberto();
@@ -483,8 +630,22 @@ function criarApiDemo() {
       const ordem = embaralhar(db.participantes.map(x => x.id));
       const pares = {};
       ordem.forEach((x, i) => { pares[x] = ordem[(i + 1) % ordem.length]; });
-      const pessoas = embaralhar(db.participantes.map(x => x.id));
-      embaralhar(db.alimentos).forEach((a, i) => { a.responsavelId = pessoas[i % pessoas.length]; });
+      // Mesma regra do backend: escolhas respeitadas, o resto vai para quem tem menos itens.
+      const contagem = Object.fromEntries(db.participantes.map(x => [x.id, 0]));
+      const livres = [];
+      db.alimentos.forEach(a => {
+        if (a.escolhidoPor in contagem) {
+          a.responsavelId = a.escolhidoPor;
+          contagem[a.escolhidoPor]++;
+        } else {
+          livres.push(a);
+        }
+      });
+      embaralhar(livres).forEach(a => {
+        const escolhido = embaralhar(Object.keys(contagem)).reduce((menor, x) => (contagem[x] < contagem[menor] ? x : menor));
+        a.responsavelId = escolhido;
+        contagem[escolhido]++;
+      });
       db.sorteio = { pares, data: new Date().toISOString() };
       db.participantes.forEach(enviar);
       return { envio: { total: db.participantes.length, falhas: [] } };
@@ -519,5 +680,5 @@ if (API_URL && !codigoFamilia) bloquear();
 else carregar().then(ok => { if (ok) abrirEdicao(); });
 // Atualiza a lista de tempos em tempos para mostrar o que os outros adicionaram.
 const podeAtualizar = () => !document.hidden && !ocupado && (codigoFamilia || !API_URL);
-setInterval(() => { if (podeAtualizar()) carregar(true); }, 30000);
+setInterval(() => { if (podeAtualizar()) carregar(true); }, 20000);
 document.addEventListener('visibilitychange', () => { if (podeAtualizar()) carregar(true); });

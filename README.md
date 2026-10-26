@@ -11,7 +11,9 @@ Página para a família se cadastrar no amigo secreto (nome, e-mail e desejos), 
 
 - O sorteio acontece **no servidor do Google**. O resultado do amigo secreto nunca aparece na página, nem para quem clicou no botão.
 - Ninguém tira a si mesmo, e todos dão e recebem exatamente um presente.
-- As comidas são divididas da forma mais equilibrada possível, e essa divisão aparece para todos na página.
+- **"🙋 Eu levo":** quem quiser levar uma comida específica toca no botão e escolhe o próprio nome. O item fica reservado para essa pessoa. Com **Soltar**, ele volta para o sorteio.
+- No sorteio, as comidas escolhidas ficam com quem escolheu. As outras vão primeiro para quem tem menos itens, para que todos acabem com quantidades parecidas. A divisão aparece para todos na página, e quem escolheu o item aparece marcado com 🙋.
+- **💬 Recadinhos:** um mini chat no fim da página que atualiza sozinho a cada 20 segundos. As mensagens ficam na aba *Mensagens* da planilha, e o organizador pode apagar qualquer uma com o PIN.
 - Depois do sorteio, o cadastro fica fechado. Se alguém perder o e-mail, pode pedir na própria página para reenviar.
 - **Editar os desejos:** o ✏️ ao lado do nome envia um link pessoal para o e-mail da pessoa, válido por 6 horas. Só quem recebe o e-mail consegue editar. Antes do sorteio, o mesmo link permite sair do amigo secreto.
 - Se alguém editar a lista **depois do sorteio**, quem tirou essa pessoa recebe um e-mail com a lista nova. O segredo continua guardado.

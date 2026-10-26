@@ -277,6 +277,98 @@ body:not(.bloqueado) .portao,
 }
 .editar:hover { background: var(--chip); }
 
+/* ===== Comidas ("Eu levo") ===== */
+.lista--comidas { gap: 8px; }
+.comida {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  background: #fff;
+}
+.comida__item { flex: 1 1 140px; font-weight: 500; overflow-wrap: anywhere; }
+.comida__dono { font-size: .85rem; color: var(--verde); font-weight: 600; }
+.btn-mini {
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--borda);
+  background: #fff;
+  color: var(--texto);
+  cursor: pointer;
+}
+.btn-mini:hover { background: var(--chip); }
+.btn-mini--levar { border-color: var(--verde); color: var(--verde); }
+
+select {
+  font: inherit;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--texto);
+}
+
+.dialogo {
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 20px;
+  width: min(420px, calc(100% - 32px));
+  background: var(--cartao);
+  color: var(--texto);
+  box-shadow: var(--sombra);
+}
+.dialogo::backdrop { background: rgba(11, 59, 31, .45); }
+.dialogo h3 { margin: 0; font-size: 1.1rem; }
+.dialogo .form { margin: 0; }
+
+/* ===== Mini chat ===== */
+.chat {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+}
+.chat__vazio { color: var(--texto-suave); font-style: italic; }
+.mensagem { display: grid; gap: 2px; }
+.mensagem__topo { display: flex; align-items: baseline; gap: 8px; font-size: .82rem; }
+.mensagem__nome { font-weight: 600; color: var(--verde); }
+.mensagem__hora { color: var(--texto-suave); }
+.mensagem__texto {
+  justify-self: start;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 4px 14px 14px 14px;
+  background: var(--chip);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.mensagem--minha { justify-items: end; }
+.mensagem--minha .mensagem__texto { justify-self: end; border-radius: 14px 4px 14px 14px; background: #e3efe6; }
+.mensagem__apagar {
+  border: 0;
+  background: none;
+  color: var(--texto-suave);
+  cursor: pointer;
+  font-size: .8rem;
+  padding: 0 4px;
+  opacity: .6;
+}
+.mensagem__apagar:hover { color: var(--vermelho); opacity: 1; }
+.chat__form { margin-bottom: 0; gap: 10px; }
+
 @media (max-width: 480px) {
   .cartao { padding: 18px 16px; }
   .form--linha .btn { flex: 1 1 100%; }

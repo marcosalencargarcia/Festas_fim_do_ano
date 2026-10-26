@@ -88,14 +88,14 @@
         <h2>🍗 Ceia — o que levar</h2>
         <span class="contador" id="cont-alimentos">0</span>
       </div>
-      <p class="dica so-aberto">Qualquer pessoa pode adicionar ou remover itens. No sorteio, eles são divididos entre os participantes.</p>
+      <p class="dica so-aberto">Qualquer pessoa pode adicionar ou remover itens. Quer levar algo específico? Toque em <strong>🙋 Eu levo</strong>. O que ninguém escolher é sorteado de forma equilibrada.</p>
 
       <form id="form-alimento" class="form form--linha so-aberto">
         <input name="item" required maxlength="80" placeholder="Ex.: farofa, pudim, refrigerante 2L" aria-label="Alimento">
         <button class="btn btn--primario" type="submit">Adicionar</button>
       </form>
 
-      <ul id="lista-alimentos" class="lista lista--chips"></ul>
+      <ul id="lista-alimentos" class="lista lista--comidas"></ul>
       <div id="divisao-alimentos" class="divisao" hidden></div>
     </section>
 
@@ -131,10 +131,33 @@
         </details>
       </div>
     </section>
+
+    <section class="cartao">
+      <div class="cartao__cabeca"><h2>💬 Recadinhos</h2></div>
+      <ul id="lista-mensagens" class="chat" aria-live="polite"></ul>
+      <form id="form-chat" class="form chat__form">
+        <input name="nome" required maxlength="40" autocomplete="name" placeholder="Seu nome" aria-label="Seu nome">
+        <div class="form--linha">
+          <input name="texto" required maxlength="300" autocomplete="off" placeholder="Escreva uma mensagem…" aria-label="Mensagem">
+          <button class="btn btn--primario" type="submit">Enviar</button>
+        </div>
+      </form>
+    </section>
   </main>
 
   <footer class="rodape">Feito com carinho para a família 🎄</footer>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="dialogo-levar" class="dialogo">
+    <form method="dialog" id="form-levar" class="form">
+      <h3>🙋 Quem vai levar <span id="levar-item"></span>?</h3>
+      <select name="pessoa" required aria-label="Quem vai levar"></select>
+      <div class="form--linha">
+        <button class="btn" value="cancelar" formnovalidate>Cancelar</button>
+        <button class="btn btn--primario" value="ok">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="app.js"></script>
 </body>
