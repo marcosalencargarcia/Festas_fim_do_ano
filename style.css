@@ -264,6 +264,18 @@ input:focus { outline: 2px solid var(--dourado); outline-offset: 1px; border-col
 body:not(.bloqueado) .portao,
 .bloqueado .cartao:not(.portao) { display: none; }
 .portao { border-top: 4px solid var(--dourado); }
+.cartao--edicao { border-top: 4px solid var(--verde); }
+
+.pessoa__acoes { display: flex; gap: 2px; }
+.editar {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.editar:hover { background: var(--chip); }
 
 @media (max-width: 480px) {
   .cartao { padding: 18px 16px; }

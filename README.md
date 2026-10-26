@@ -13,6 +13,9 @@ Página para a família se cadastrar no amigo secreto (nome, e-mail e desejos), 
 - Ninguém tira a si mesmo, e todos dão e recebem exatamente um presente.
 - As comidas são divididas da forma mais equilibrada possível, e essa divisão aparece para todos na página.
 - Depois do sorteio, o cadastro fica fechado. Se alguém perder o e-mail, pode pedir na própria página para reenviar.
+- **Editar os desejos:** o ✏️ ao lado do nome envia um link pessoal para o e-mail da pessoa, válido por 6 horas. Só quem recebe o e-mail consegue editar. Antes do sorteio, o mesmo link permite sair do amigo secreto.
+- Se alguém editar a lista **depois do sorteio**, quem tirou essa pessoa recebe um e-mail com a lista nova. O segredo continua guardado.
+- O ✕ ao lado do nome remove outra pessoa e só funciona com o PIN do organizador.
 
 **Segurança**
 - A página pede um **código da família** antes de mostrar ou alterar qualquer coisa. Mande o código junto com o link.

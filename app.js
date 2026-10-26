@@ -5,7 +5,6 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzewncunU9JZB5bXP7xJWf5
 const $ = sel => document.querySelector(sel);
 let estado = null;
 let ocupado = false;
-let desejos = [];
 
 // ===== Código da família (guardado neste aparelho para não pedir toda vez) =====
 const CHAVE_CODIGO = 'amigo-secreto-codigo';
@@ -81,7 +80,10 @@ function render() {
           <div class="pessoa__email">${esc(p.email)}</div>
           ${p.desejos.length ? `<div class="pessoa__desejos">${p.desejos.map(d => `<span class="chip">${esc(d)}</span>`).join('')}</div>` : ''}
         </div>
-        ${sorteado ? '' : `<button class="remover" data-remover-participante="${esc(p.id)}" title="Remover ${esc(p.nome)}" aria-label="Remover ${esc(p.nome)}">✕</button>`}
+        <div class="pessoa__acoes">
+          <button class="editar" data-editar="${esc(p.id)}" title="Editar desejos de ${esc(p.nome)}" aria-label="Editar desejos de ${esc(p.nome)}">✏️</button>
+          ${sorteado ? '' : `<button class="remover" data-remover-participante="${esc(p.id)}" title="Remover ${esc(p.nome)} (organizador)" aria-label="Remover ${esc(p.nome)}">✕</button>`}
+        </div>
       </li>`).join('')
     : '<li class="lista__vazia">Ninguém cadastrado ainda. Seja o primeiro!</li>';
 
@@ -116,26 +118,57 @@ function render() {
   }
 }
 
-function renderDesejos() {
-  const caixa = $('#tags-desejos');
-  caixa.querySelectorAll('.chip').forEach(c => c.remove());
-  const input = $('#input-desejo');
-  desejos.forEach((d, i) => {
-    const chip = document.createElement('span');
-    chip.className = 'chip';
-    chip.innerHTML = `${esc(d)} <button type="button" data-remover-desejo="${i}" aria-label="Remover ${esc(d)}">×</button>`;
-    caixa.insertBefore(chip, input);
+// Campo de desejos: o que é digitado vira um chip ao apertar Enter (ou vírgula).
+function criarCampoTags(caixa, input) {
+  let itens = [];
+
+  function desenhar() {
+    caixa.querySelectorAll('.chip').forEach(c => c.remove());
+    itens.forEach((d, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML = `${esc(d)} <button type="button" data-remover-desejo="${i}" aria-label="Remover ${esc(d)}">×</button>`;
+      caixa.insertBefore(chip, input);
+    });
+  }
+
+  function confirmar() {
+    input.value.split(',').map(s => s.trim()).filter(Boolean).forEach(d => {
+      if (itens.length < 10 && !itens.some(x => x.toLowerCase() === d.toLowerCase())) itens.push(d);
+    });
+    input.value = '';
+    desenhar();
+  }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      confirmar();
+    } else if (e.key === 'Backspace' && !input.value && itens.length) {
+      itens.pop();
+      desenhar();
+    }
   });
+  input.addEventListener('blur', confirmar);
+  caixa.addEventListener('click', e => {
+    const btn = e.target.closest('[data-remover-desejo]');
+    if (btn) {
+      itens.splice(Number(btn.dataset.removerDesejo), 1);
+      desenhar();
+    } else {
+      input.focus();
+    }
+  });
+
+  return {
+    confirmar,
+    valores: () => itens.slice(),
+    definir(lista) { itens = lista.slice(0, 10); desenhar(); },
+  };
 }
 
-function addDesejosDoInput() {
-  const input = $('#input-desejo');
-  input.value.split(',').map(s => s.trim()).filter(Boolean).forEach(d => {
-    if (desejos.length < 10 && !desejos.some(x => x.toLowerCase() === d.toLowerCase())) desejos.push(d);
-  });
-  input.value = '';
-  renderDesejos();
-}
+const campoDesejos = criarCampoTags($('#tags-desejos'), $('#input-desejo'));
+const campoEdicao = criarCampoTags($('#tags-edicao'), $('#input-edicao'));
 
 // ===== Ações =====
 async function executar(fn, sucesso) {
@@ -180,56 +213,105 @@ $('#form-portao').addEventListener('submit', async e => {
     salvarCodigo(codigoFamilia);
     form.reset();
     toast('Bem-vindo(a)! 🎄');
+    abrirEdicao();
   }
 });
 
 $('#form-participante').addEventListener('submit', async e => {
   e.preventDefault();
-  addDesejosDoInput();
+  campoDesejos.confirmar();
   const form = e.target;
   const ok = await executar(async () => {
     estado = await api.chamar('addParticipante', {
-      nome: form.nome.value, email: form.email.value, desejos,
+      nome: form.nome.value, email: form.email.value, desejos: campoDesejos.valores(),
     });
     render();
     return true;
   }, 'Cadastro feito! 🎄');
   if (ok) {
     form.reset();
-    desejos = [];
-    renderDesejos();
-  }
-});
-
-$('#input-desejo').addEventListener('keydown', e => {
-  if (e.key === 'Enter' || e.key === ',') {
-    e.preventDefault();
-    addDesejosDoInput();
-  } else if (e.key === 'Backspace' && !e.target.value && desejos.length) {
-    desejos.pop();
-    renderDesejos();
-  }
-});
-$('#input-desejo').addEventListener('blur', addDesejosDoInput);
-$('#tags-desejos').addEventListener('click', e => {
-  const btn = e.target.closest('[data-remover-desejo]');
-  if (btn) {
-    desejos.splice(Number(btn.dataset.removerDesejo), 1);
-    renderDesejos();
-  } else {
-    $('#input-desejo').focus();
+    campoDesejos.definir([]);
   }
 });
 
 $('#lista-participantes').addEventListener('click', e => {
+  const editar = e.target.closest('[data-editar]');
+  if (editar) {
+    const p = estado.participantes.find(x => x.id === editar.dataset.editar);
+    if (!p || !confirm(`Enviar para o e-mail de ${p.nome} (${p.email}) um link para editar os desejos?`)) return;
+    executar(() => api.chamar('pedirLinkEdicao', { id: p.id }),
+      `Link enviado para ${p.email}. Abra o e-mail e toque em "Editar meus desejos" (vale por 6 horas).`);
+    return;
+  }
+
+  // Remover outra pessoa é tarefa do organizador; cada um sai sozinho pelo link de edição.
   const btn = e.target.closest('[data-remover-participante]');
   if (!btn) return;
   const p = estado.participantes.find(x => x.id === btn.dataset.removerParticipante);
-  if (!p || !confirm(`Remover ${p.nome} do amigo secreto?`)) return;
+  if (!p) return;
+  const pin = prompt(`Remover ${p.nome} do amigo secreto?\n\nDigite o PIN do organizador.\n(Para sair você mesmo, use o ✏️ e o link que chega no seu e-mail.)`);
+  if (!pin) return;
   executar(async () => {
-    estado = await api.chamar('removerParticipante', { id: p.id });
+    estado = await api.chamar('removerParticipante', { id: p.id, pin });
     render();
   }, `${p.nome} foi removido(a).`);
+});
+
+// ===== Edição dos próprios desejos (link do e-mail) =====
+let tokenEdicao = '';
+
+// O link do e-mail traz ?editar=<token>: guarda o token e limpa o endereço.
+(function lerTokenDaUrl() {
+  const params = new URLSearchParams(location.search);
+  const token = params.get('editar');
+  if (!token) return;
+  tokenEdicao = token;
+  params.delete('editar');
+  const resto = params.toString();
+  history.replaceState(null, '', location.pathname + (resto ? '?' + resto : '') + location.hash);
+})();
+
+async function abrirEdicao() {
+  if (!tokenEdicao) return;
+  const dados = await executar(() => api.chamar('abrirEdicao', { token: tokenEdicao }));
+  if (!dados) {
+    tokenEdicao = '';
+    return;
+  }
+  $('#edicao-nome').textContent = dados.nome;
+  campoEdicao.definir(dados.desejos);
+  $('#painel-edicao').hidden = false;
+  $('#painel-edicao').scrollIntoView({ behavior: 'smooth' });
+}
+
+function fecharEdicao() {
+  tokenEdicao = '';
+  $('#painel-edicao').hidden = true;
+}
+
+$('#form-edicao').addEventListener('submit', e => {
+  e.preventDefault();
+  campoEdicao.confirmar();
+  executar(async () => {
+    const r = await api.chamar('salvarDesejos', { token: tokenEdicao, desejos: campoEdicao.valores() });
+    estado = r;
+    render();
+    return r;
+  }, r => r.avisado
+    ? 'Desejos salvos! Quem tirou você recebeu a lista nova por e-mail. 🤫'
+    : 'Desejos salvos! 🎁');
+});
+
+$('#fechar-edicao').addEventListener('click', fecharEdicao);
+
+$('#remover-meu-cadastro').addEventListener('click', async () => {
+  if (!confirm('Remover o seu cadastro do amigo secreto?')) return;
+  const ok = await executar(async () => {
+    estado = await api.chamar('removerMeuCadastro', { token: tokenEdicao });
+    render();
+    return true;
+  }, 'Seu cadastro foi removido.');
+  if (ok) fecharEdicao();
 });
 
 $('#form-alimento').addEventListener('submit', async e => {
@@ -342,6 +424,12 @@ function criarApiDemo() {
     console.info(`📧 [demo] Para ${p.email}: seu amigo secreto é ${amigo.nome} (deseja: ${amigo.desejos.join(', ') || '—'}). Você leva: ${itens.join(', ') || 'nada'}.`);
   };
 
+  const porToken = token => {
+    const p = db.participantes.find(x => 'demo-' + x.id === token);
+    if (!p) throw new Error('Este link de edição expirou ou não é válido. Peça um novo na página.');
+    return p;
+  };
+
   const acoes = {
     addParticipante({ nome, email, desejos: lista }) {
       aberto();
@@ -352,9 +440,30 @@ function criarApiDemo() {
       if (db.participantes.some(p => p.email === email)) throw new Error('Este e-mail já está cadastrado.');
       db.participantes.push({ id: id(), nome, email, desejos: lista.slice(0, 10) });
     },
-    removerParticipante({ id: alvo }) {
+    removerParticipante({ id: alvo, pin: p }) {
+      pin(p);
       aberto();
-      db.participantes = db.participantes.filter(p => p.id !== alvo);
+      db.participantes = db.participantes.filter(x => x.id !== alvo);
+    },
+    pedirLinkEdicao({ id: alvo }) {
+      const p = db.participantes.find(x => x.id === alvo);
+      if (!p) throw new Error('Participante não encontrado.');
+      console.info(`📧 [demo] Link de edição para ${p.email}: ${location.pathname}?editar=demo-${p.id}`);
+      return { enviado: true };
+    },
+    abrirEdicao({ token }) {
+      const p = porToken(token);
+      return { nome: p.nome, desejos: p.desejos };
+    },
+    salvarDesejos({ token, desejos: lista }) {
+      const p = porToken(token);
+      p.desejos = lista.slice(0, 10);
+      return { avisado: !!db.sorteio };
+    },
+    removerMeuCadastro({ token }) {
+      aberto();
+      const p = porToken(token);
+      db.participantes = db.participantes.filter(x => x.id !== p.id);
     },
     addAlimento({ item }) {
       aberto();
@@ -399,7 +508,7 @@ function criarApiDemo() {
     async chamar(action, dados = {}) {
       const extra = acoes[action](dados);
       salvar();
-      return action === 'reenviar' ? extra : { ...publico(), ...extra };
+      return ['reenviar', 'pedirLinkEdicao', 'abrirEdicao'].includes(action) ? extra : { ...publico(), ...extra };
     },
   };
 }
@@ -407,7 +516,7 @@ function criarApiDemo() {
 // ===== Início =====
 $('#aviso-demo').hidden = !!API_URL;
 if (API_URL && !codigoFamilia) bloquear();
-else carregar();
+else carregar().then(ok => { if (ok) abrirEdicao(); });
 // Atualiza a lista de tempos em tempos para mostrar o que os outros adicionaram.
 const podeAtualizar = () => !document.hidden && !ocupado && (codigoFamilia || !API_URL);
 setInterval(() => { if (podeAtualizar()) carregar(true); }, 30000);

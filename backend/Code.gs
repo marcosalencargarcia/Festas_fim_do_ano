@@ -17,10 +17,14 @@ const PIN_ORGANIZADOR = 'troque-este-pin';
 const CODIGO_FAMILIA = 'troque-este-codigo';
 const NOME_EVENTO = 'Festas de Fim de Ano da Família';
 const MIN_PARTICIPANTES = 3;
+// Endereço da página publicada (usado no link de edição enviado por e-mail).
+const URL_PAGINA = 'https://marcosalencargarcia.github.io/Festas_fim_do_ano/';
 
 const MAX_TENTATIVAS_PIN = 5;
 const BLOQUEIO_PIN_SEG = 15 * 60;
 const INTERVALO_REENVIO_SEG = 10 * 60;
+const VALIDADE_LINK_SEG = 6 * 60 * 60; // máximo permitido pelo CacheService
+const INTERVALO_LINK_SEG = 5 * 60;
 
 const ABA_PARTICIPANTES = 'Participantes';
 const ABA_ALIMENTOS = 'Alimentos';
@@ -46,6 +50,7 @@ function doPost(e) {
     const acoes = {
       addParticipante, removerParticipante, addAlimento, removerAlimento,
       sortear, reenviar, desfazerSorteio,
+      pedirLinkEdicao, abrirEdicao, salvarDesejos, removerMeuCadastro,
     };
     const acao = acoes[req.action];
     if (!acao) throw new Error('Ação desconhecida.');
@@ -81,8 +86,7 @@ function addParticipante(req) {
   exigirCadastroAberto();
   const nome = texto(req.nome, 60);
   const email = texto(req.email, 120).toLowerCase();
-  const desejos = (Array.isArray(req.desejos) ? req.desejos : [])
-    .map(d => texto(d, 100)).filter(Boolean).slice(0, 10);
+  const desejos = limparDesejos(req.desejos);
 
   if (!nome) throw new Error('Informe o nome.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-mail inválido.');
@@ -92,7 +96,9 @@ function addParticipante(req) {
   return estado();
 }
 
+// Só o organizador remove outras pessoas; cada um pode sair sozinho pelo link de edição.
 function removerParticipante(req) {
+  exigirPin(req.pin);
   exigirCadastroAberto();
   removerLinhaPorId(abaParticipantes(), String(req.id));
   return estado();
@@ -184,6 +190,71 @@ function desfazerSorteio(req) {
   return estado();
 }
 
+// ===== Edição dos próprios desejos (link pessoal enviado por e-mail) =====
+function pedirLinkEdicao(req) {
+  const p = lerParticipantes().find(x => x.id === String(req.id));
+  if (!p) throw new Error('Participante não encontrado.');
+
+  const cache = CacheService.getScriptCache();
+  if (cache.get('link:' + p.id)) throw new Error('Um link acabou de ser enviado para este e-mail. Aguarde 5 minutos.');
+
+  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  cache.put('edicao:' + token, p.id, VALIDADE_LINK_SEG);
+  cache.put('link:' + p.id, '1', INTERVALO_LINK_SEG);
+
+  const link = URL_PAGINA + '?editar=' + token;
+  MailApp.sendEmail({
+    to: p.email,
+    subject: `✏️ Editar seus desejos — ${NOME_EVENTO}`,
+    htmlBody: moldura(`Olá, ${esc(p.nome)}! ✏️`, `
+      <p style="margin:0 0 16px">Use o botão abaixo para editar a sua lista de desejos.</p>
+      <p style="margin:0 0 16px"><a href="${esc(link)}" style="display:inline-block;background:#14532d;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Editar meus desejos</a></p>
+      <p style="margin:0;font-size:13px;color:#666">O link vale por 6 horas. Se não foi você que pediu, é só ignorar este e-mail.</p>`),
+    name: 'Amigo Secreto da Família',
+  });
+  return { enviado: true };
+}
+
+function abrirEdicao(req) {
+  const p = participantePorToken(req.token);
+  return { nome: p.nome, desejos: p.desejos };
+}
+
+function salvarDesejos(req) {
+  const p = participantePorToken(req.token);
+  const desejos = limparDesejos(req.desejos);
+  const sh = abaParticipantes();
+  sh.getRange(linhaPorId(sh, p.id), 4).setValue(celula(desejos.join('\n')));
+
+  // Depois do sorteio, avisa só quem tirou esta pessoa. O segredo continua guardado.
+  let avisado = false;
+  const sorteio = lerSorteio();
+  if (sorteio) {
+    const idQuemTirou = Object.keys(sorteio.pares).find(id => sorteio.pares[id] === p.id);
+    const quemTirou = lerParticipantes().find(x => x.id === idQuemTirou);
+    if (quemTirou) {
+      enviarDesejosAtualizados(quemTirou, p.nome, desejos);
+      avisado = true;
+    }
+  }
+  return Object.assign(estado(), { avisado });
+}
+
+function removerMeuCadastro(req) {
+  exigirCadastroAberto();
+  const p = participantePorToken(req.token);
+  removerLinhaPorId(abaParticipantes(), p.id);
+  CacheService.getScriptCache().remove('edicao:' + String(req.token));
+  return estado();
+}
+
+function participantePorToken(token) {
+  const id = CacheService.getScriptCache().get('edicao:' + String(token || ''));
+  const p = id && lerParticipantes().find(x => x.id === id);
+  if (!p) throw new Error('Este link de edição expirou ou não é válido. Peça um novo na página.');
+  return p;
+}
+
 // ===== Estado público (nunca inclui os pares do amigo secreto) =====
 function estado() {
   const sorteio = lerSorteio();
@@ -211,37 +282,51 @@ function enviarResultado(quem, participantes, pares, alimentos) {
   if (!amigo) throw new Error('Par não encontrado para ' + quem.nome);
   const meusItens = alimentos.filter(a => a.responsavelId === quem.id).map(a => a.item);
 
-  const desejosHtml = amigo.desejos.length
-    ? '<ul style="margin:8px 0 0;padding-left:20px">' + amigo.desejos.map(d => `<li>${esc(d)}</li>`).join('') + '</ul>'
-    : '<p style="margin:8px 0 0;color:#666">Não deixou sugestões — capriche na surpresa!</p>';
-  const itensHtml = meusItens.length
-    ? '<ul style="margin:8px 0 0;padding-left:20px">' + meusItens.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>'
-    : '<p style="margin:8px 0 0;color:#666">Nenhum item ficou com você desta vez. 😉</p>';
-
-  const htmlBody = `
-  <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#1d2b22">
-    <div style="background:#14532d;color:#fff;padding:24px;border-radius:12px 12px 0 0;text-align:center">
-      <div style="font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#f5d27a">${esc(NOME_EVENTO)}</div>
-      <h1 style="margin:8px 0 0;font-size:22px">Olá, ${esc(quem.nome)}! 🎄</h1>
-    </div>
-    <div style="background:#fffaf0;padding:24px;border:1px solid #eadfc8;border-top:0;border-radius:0 0 12px 12px">
-      <p style="margin:0 0 4px">Seu amigo secreto é:</p>
-      <p style="font-size:26px;font-weight:bold;color:#b91c1c;margin:0 0 16px">🎁 ${esc(amigo.nome)}</p>
-      <strong>Gostaria de ganhar:</strong>
-      ${desejosHtml}
-      <hr style="border:0;border-top:1px solid #eadfc8;margin:20px 0">
-      <strong>🍗 Você vai levar para a ceia:</strong>
-      ${itensHtml}
-      <p style="margin:24px 0 0;font-size:13px;color:#666">Guarde segredo! 🤫 Este e-mail foi enviado só para você.</p>
-    </div>
-  </div>`;
-
   MailApp.sendEmail({
     to: quem.email,
     subject: `🎁 Seu amigo secreto — ${NOME_EVENTO}`,
-    htmlBody,
+    htmlBody: moldura(`Olá, ${esc(quem.nome)}! 🎄`, `
+      <p style="margin:0 0 4px">Seu amigo secreto é:</p>
+      <p style="font-size:26px;font-weight:bold;color:#b91c1c;margin:0 0 16px">🎁 ${esc(amigo.nome)}</p>
+      <strong>Gostaria de ganhar:</strong>
+      ${listaHtml(amigo.desejos, 'Não deixou sugestões — capriche na surpresa!')}
+      <hr style="border:0;border-top:1px solid #eadfc8;margin:20px 0">
+      <strong>🍗 Você vai levar para a ceia:</strong>
+      ${listaHtml(meusItens, 'Nenhum item ficou com você desta vez. 😉')}
+      <p style="margin:24px 0 0;font-size:13px;color:#666">Guarde segredo! 🤫 Este e-mail foi enviado só para você.</p>`),
     name: 'Amigo Secreto da Família',
   });
+}
+
+function enviarDesejosAtualizados(quem, nomeAmigo, desejos) {
+  MailApp.sendEmail({
+    to: quem.email,
+    subject: `🎁 Seu amigo secreto atualizou a lista de desejos — ${NOME_EVENTO}`,
+    htmlBody: moldura(`Olá, ${esc(quem.nome)}! 🎁`, `
+      <p style="margin:0 0 16px"><strong>${esc(nomeAmigo)}</strong>, o seu amigo secreto, atualizou a lista de desejos:</p>
+      ${listaHtml(desejos, 'A lista ficou vazia — capriche na surpresa!')}
+      <p style="margin:24px 0 0;font-size:13px;color:#666">Guarde segredo! 🤫 Este e-mail foi enviado só para você.</p>`),
+    name: 'Amigo Secreto da Família',
+  });
+}
+
+function moldura(titulo, conteudo) {
+  return `
+  <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#1d2b22">
+    <div style="background:#14532d;color:#fff;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+      <div style="font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#f5d27a">${esc(NOME_EVENTO)}</div>
+      <h1 style="margin:8px 0 0;font-size:22px">${titulo}</h1>
+    </div>
+    <div style="background:#fffaf0;padding:24px;border:1px solid #eadfc8;border-top:0;border-radius:0 0 12px 12px">
+      ${conteudo}
+    </div>
+  </div>`;
+}
+
+function listaHtml(itens, textoVazio) {
+  return itens.length
+    ? '<ul style="margin:8px 0 0;padding-left:20px">' + itens.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>'
+    : `<p style="margin:8px 0 0;color:#666">${textoVazio}</p>`;
 }
 
 // ===== Planilha =====
@@ -283,15 +368,16 @@ function lerAlimentos() {
   }));
 }
 
-function removerLinhaPorId(sh, id) {
+function linhaPorId(sh, id) {
   const valores = sh.getDataRange().getValues();
   for (let i = 1; i < valores.length; i++) {
-    if (String(valores[i][0]) === id) {
-      sh.deleteRow(i + 1);
-      return;
-    }
+    if (String(valores[i][0]) === id) return i + 1;
   }
   throw new Error('Registro não encontrado (talvez já tenha sido removido).');
+}
+
+function removerLinhaPorId(sh, id) {
+  sh.deleteRow(linhaPorId(sh, id));
 }
 
 function lerSorteio() {
@@ -320,6 +406,10 @@ function exigirPin(pin) {
 
 function texto(valor, max) {
   return String(valor == null ? '' : valor).trim().slice(0, max);
+}
+
+function limparDesejos(lista) {
+  return (Array.isArray(lista) ? lista : []).map(d => texto(d, 100)).filter(Boolean).slice(0, 10);
 }
 
 // Evita que um texto começando com "=" vire fórmula na planilha.

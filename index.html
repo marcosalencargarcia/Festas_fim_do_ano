@@ -35,6 +35,25 @@
       </form>
     </section>
 
+    <section class="cartao cartao--edicao" id="painel-edicao" hidden>
+      <div class="cartao__cabeca"><h2>✏️ Seus desejos</h2></div>
+      <p class="dica">Editando a lista de <strong id="edicao-nome"></strong>. Enter adiciona um item, o × remove.</p>
+      <form id="form-edicao" class="form">
+        <div class="tags" id="tags-edicao">
+          <input id="input-edicao" maxlength="100" placeholder="Ex.: livro, perfume, vale-presente…" aria-label="Adicionar desejo">
+        </div>
+        <div class="form--linha">
+          <button class="btn btn--primario" type="submit">Salvar desejos</button>
+          <button class="btn" type="button" id="fechar-edicao">Fechar</button>
+        </div>
+      </form>
+      <details class="organizador so-aberto">
+        <summary>Sair do amigo secreto</summary>
+        <p class="dica">Remove o seu cadastro. Só é possível antes do sorteio.</p>
+        <button class="btn btn--perigo" type="button" id="remover-meu-cadastro">Remover meu cadastro</button>
+      </details>
+    </section>
+
     <section class="cartao">
       <div class="cartao__cabeca">
         <h2>🎁 Participantes</h2>
