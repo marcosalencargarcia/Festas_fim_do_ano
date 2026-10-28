@@ -143,8 +143,12 @@ function renderMensagens(mensagens) {
         <div class="mensagem__topo">
           <span class="mensagem__nome">${esc(m.nome)}</span>
           <span class="mensagem__hora">${esc(hora)}</span>
+          <button class="mensagem__responder" data-responder="${esc(m.id)}" title="Responder a ${esc(m.nome)}" aria-label="Responder a ${esc(m.nome)}">↩️ Responder</button>
           <button class="mensagem__apagar" data-apagar-mensagem="${esc(m.id)}" title="Apagar (organizador)" aria-label="Apagar mensagem">✕</button>
         </div>
+        ${m.resposta ? `<div class="mensagem__citacao">${m.resposta.apagada
+          ? '<em>Mensagem apagada</em>'
+          : `<strong>${esc(m.resposta.nome)}</strong> ${esc(m.resposta.texto)}`}</div>` : ''}
         <div class="mensagem__texto">${esc(m.texto)}</div>
       </li>`;
     }).join('')
@@ -211,7 +215,8 @@ async function executar(fn, sucesso) {
   document.querySelectorAll('button').forEach(b => { b.disabled = true; });
   try {
     const resultado = await fn();
-    if (sucesso) toast(typeof sucesso === 'function' ? sucesso(resultado) : sucesso);
+    const texto = typeof sucesso === 'function' ? sucesso(resultado) : sucesso;
+    if (texto) toast(texto);
     return resultado;
   } catch (err) {
     if (err instanceof ErroCodigo) bloquear(err.message);
@@ -461,6 +466,17 @@ $('#form-levar').addEventListener('submit', e => {
 // ===== Mini chat =====
 const CHAVE_NOME = 'amigo-secreto-nome';
 $('#form-chat').nome.value = lerLocal(CHAVE_NOME);
+let respondendoA = null;
+
+function responderMensagem(m) {
+  respondendoA = m;
+  $('#respondendo-nome').textContent = m ? m.nome : '';
+  $('#respondendo-texto').textContent = m ? m.texto : '';
+  $('#chat-respondendo').hidden = !m;
+  if (m) $('#form-chat').texto.focus();
+}
+
+$('#cancelar-resposta').addEventListener('click', () => responderMensagem(null));
 
 $('#form-chat').addEventListener('submit', async e => {
   e.preventDefault();
@@ -468,20 +484,30 @@ $('#form-chat').addEventListener('submit', async e => {
   const nome = form.nome.value.trim();
   salvarLocal(CHAVE_NOME, nome);
   const ok = await executar(async () => {
-    estado = await api.chamar('enviarMensagem', { nome, texto: form.texto.value });
+    estado = await api.chamar('enviarMensagem', {
+      nome, texto: form.texto.value, respondeA: respondendoA ? respondendoA.id : '',
+    });
     assinaturaChat = null; // força redesenhar para marcar a mensagem como "minha"
     render();
     const lista = $('#lista-mensagens');
     lista.scrollTop = lista.scrollHeight;
-    return true;
-  });
+    return estado;
+  }, r => (r.avisado ? `Resposta enviada! ${r.avisado} vai receber um aviso por e-mail. 💬` : ''));
   if (ok) {
     form.texto.value = '';
+    responderMensagem(null);
     form.texto.focus();
   }
 });
 
 $('#lista-mensagens').addEventListener('click', e => {
+  const responder = e.target.closest('[data-responder]');
+  if (responder) {
+    const m = (estado.mensagens || []).find(x => x.id === responder.dataset.responder);
+    if (m) responderMensagem(m);
+    return;
+  }
+
   const btn = e.target.closest('[data-apagar-mensagem]');
   if (!btn) return;
   const pin = prompt('Apagar esta mensagem? Digite o PIN do organizador.');
@@ -583,7 +609,13 @@ function criarApiDemo() {
         id: a.id, item: a.item, escolhidoPor: nomes[a.escolhidoPor] || '',
         responsavel: db.sorteio ? nomes[a.responsavelId] || '' : '',
       })),
-      mensagens: db.mensagens.slice(-50),
+      mensagens: db.mensagens.slice(-50).map(m => {
+        const o = m.respondeA && db.mensagens.find(x => x.id === m.respondeA);
+        return {
+          ...m,
+          resposta: m.respondeA ? (o ? { id: o.id, nome: o.nome, texto: o.texto.slice(0, 120) } : { apagada: true }) : null,
+        };
+      }),
     };
   };
   const enviar = p => {
@@ -653,11 +685,18 @@ function criarApiDemo() {
       const a = db.alimentos.find(x => x.id === alvo);
       if (a) a.escolhidoPor = '';
     },
-    enviarMensagem({ nome, texto }) {
+    enviarMensagem({ nome, texto, respondeA }) {
       nome = String(nome).trim().slice(0, 40);
       texto = String(texto).trim().slice(0, 300);
       if (!nome || !texto) throw new Error('Informe seu nome e a mensagem.');
-      db.mensagens.push({ id: id(), nome, texto, quando: new Date().toISOString() });
+      const original = respondeA && db.mensagens.find(m => m.id === respondeA);
+      if (respondeA && !original) throw new Error('A mensagem que você quer responder não existe mais.');
+      db.mensagens.push({ id: id(), nome, texto, quando: new Date().toISOString(), respondeA: original ? original.id : '' });
+      // Mesma regra do backend (simplificada): avisa o participante com o mesmo nome do autor.
+      const dono = original && original.nome.toLowerCase() !== nome.toLowerCase()
+        && db.participantes.find(p => p.nome.toLowerCase() === original.nome.toLowerCase());
+      if (dono) console.info(`📧 [demo] Para ${dono.email}: ${nome} respondeu seu recado: "${texto}"`);
+      return { avisado: dono ? dono.nome : '' };
     },
     apagarMensagem({ id: alvo, pin: p }) {
       pin(p);

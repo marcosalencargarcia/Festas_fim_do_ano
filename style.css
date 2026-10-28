@@ -386,7 +386,41 @@ select {
   opacity: .6;
 }
 .mensagem__apagar:hover { color: var(--vermelho); opacity: 1; }
+.mensagem__responder {
+  border: 0;
+  background: none;
+  color: var(--texto-suave);
+  cursor: pointer;
+  font-size: .78rem;
+  padding: 0 4px;
+}
+.mensagem__responder:hover { color: var(--verde); }
+.mensagem__citacao {
+  max-width: 100%;
+  padding: 4px 10px;
+  border-left: 3px solid var(--borda);
+  color: var(--texto-suave);
+  font-size: .82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mensagem--minha .mensagem__citacao { justify-self: end; }
 .chat__form { margin-bottom: 0; gap: 10px; }
+.chat__respondendo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--verde);
+  background: var(--chip);
+  border-radius: 6px;
+  font-size: .85rem;
+}
+.chat__respondendo > div { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat__respondendo strong { margin-right: 6px; }
+.chat__respondendo[hidden] { display: none; }
 
 @media (max-width: 480px) {
   .cartao { padding: 18px 16px; }
