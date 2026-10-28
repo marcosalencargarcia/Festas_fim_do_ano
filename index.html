@@ -35,6 +35,24 @@
       </form>
     </section>
 
+    <section class="cartao cartao--revelar" id="painel-revelar" hidden>
+      <div class="cartao__cabeca"><h2>🎁 Seu amigo secreto</h2></div>
+      <div id="revelar-antes">
+        <p>O seu resultado está guardado aqui. Antes de revelar, confira se ninguém está olhando a sua tela. 😉</p>
+        <button class="btn btn--festa" type="button" id="botao-revelar">🎁 Revelar</button>
+      </div>
+      <div id="revelar-depois" hidden>
+        <p class="revelar__aviso" id="revelar-aviso"></p>
+        <p class="revelar__ola">Olá, <strong id="revelar-nome"></strong>! Você tirou:</p>
+        <p class="revelar__amigo" id="revelar-amigo"></p>
+        <h3>Gostaria de ganhar</h3>
+        <ul class="revelar__lista" id="revelar-desejos"></ul>
+        <h3>🍗 Você vai levar para a ceia</h3>
+        <ul class="revelar__lista" id="revelar-itens"></ul>
+        <button class="btn" type="button" id="fechar-revelar">Esconder</button>
+      </div>
+    </section>
+
     <section class="cartao cartao--edicao" id="painel-edicao" hidden>
       <div class="cartao__cabeca"><h2>✏️ Seus desejos</h2></div>
       <p class="dica">Editando a lista de <strong id="edicao-nome"></strong>. Enter adiciona um item, o × remove.</p>
@@ -112,7 +130,7 @@
       </div>
 
       <div id="sorteio-feito" hidden>
-        <p class="resumo">✅ Sorteio realizado em <strong id="data-sorteio"></strong>. Cada participante recebeu um e-mail com o seu amigo secreto e o que levar para a ceia.</p>
+        <p class="resumo">✅ Sorteio realizado em <strong id="data-sorteio"></strong>. Cada participante recebeu um e-mail com um link pessoal para descobrir o seu amigo secreto e o que levar para a ceia.</p>
 
         <h3>Não recebeu ou apagou o e-mail?</h3>
         <p class="dica">Confira também a caixa de spam. Ou peça para reenviar:</p>

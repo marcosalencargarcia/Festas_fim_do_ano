@@ -10,6 +10,8 @@ Página para a família se cadastrar no amigo secreto (nome, e-mail e desejos), 
 | `backend/Code.gs` | Código que roda no Google (Apps Script): guarda os dados numa Planilha Google, faz o sorteio e envia os e-mails pelo seu Gmail |
 
 - O sorteio acontece **no servidor do Google**. O resultado do amigo secreto nunca aparece na página, nem para quem clicou no botão.
+- **O e-mail do sorteio não traz nomes.** Ele só tem um link pessoal que abre o cartão "🎁 Revelar" na página. O cartão avisa se o link já tinha sido aberto antes, e assim a pessoa percebe se alguém espiou.
+- As cópias desses e-mails na pasta **Enviados** de quem organiza vão para a **Lixeira** automaticamente, cerca de 1 minuto depois do envio. Os filtros do Gmail não funcionam em e-mails enviados, então é o próprio script que faz isso. Para ativar, execute uma vez a função `autorizarLimpeza` no editor.
 - Ninguém tira a si mesmo, e todos dão e recebem exatamente um presente.
 - **"🙋 Eu levo":** quem quiser levar uma comida específica toca no botão e escolhe o próprio nome. O item fica reservado para essa pessoa. Com **Soltar**, ele volta para o sorteio.
 - No sorteio, as comidas escolhidas ficam com quem escolheu. As outras vão primeiro para quem tem menos itens, para que todos acabem com quantidades parecidas. A divisão aparece para todos na página, e quem escolheu o item aparece marcado com 🙋.

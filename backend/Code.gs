@@ -19,6 +19,9 @@ const NOME_EVENTO = 'Festas de Fim de Ano da Família';
 const MIN_PARTICIPANTES = 3;
 // Endereço da página publicada (usado no link de edição enviado por e-mail).
 const URL_PAGINA = 'https://marcosalencargarcia.github.io/Festas_fim_do_ano/';
+// Assuntos dos e-mails do sorteio. As cópias deles em "Enviados" vão para a lixeira automaticamente.
+const ASSUNTO_RESULTADO = `🎁 O sorteio foi feito! — ${NOME_EVENTO}`;
+const ASSUNTO_ATUALIZACAO = `🎁 Seu amigo secreto atualizou a lista de desejos — ${NOME_EVENTO}`;
 
 const MAX_TENTATIVAS_PIN = 5;
 const BLOQUEIO_PIN_SEG = 15 * 60;
@@ -56,6 +59,7 @@ function doPost(e) {
       sortear, reenviar, desfazerSorteio,
       pedirLinkEdicao, abrirEdicao, salvarDesejos, removerMeuCadastro,
       escolherAlimento, soltarAlimento, enviarMensagem, apagarMensagem,
+      revelar,
     };
     const acao = acoes[req.action];
     if (!acao) throw new Error('Ação desconhecida.');
@@ -196,18 +200,22 @@ function sortear(req) {
     sh.getRange(2, 3, dados.length - 1, 1).setValues(dados.slice(1).map(r => [r[2]]));
   }
 
-  PropertiesService.getScriptProperties()
-    .setProperty(PROP_SORTEIO, JSON.stringify({ pares, data: new Date().toISOString() }));
+  // Cada pessoa recebe um link pessoal para ver o resultado; "vistos" guarda a 1ª abertura.
+  const links = {};
+  participantes.forEach(p => { links[p.id] = novoToken(); });
+  PropertiesService.getScriptProperties().setProperty(PROP_SORTEIO, JSON.stringify({
+    pares, links, vistos: {}, data: new Date().toISOString(),
+  }));
 
-  const alimentos = lerAlimentos();
   const falhas = [];
   participantes.forEach(p => {
     try {
-      enviarResultado(p, participantes, pares, alimentos);
+      enviarResultado(p, links[p.id]);
     } catch (err) {
       falhas.push(p.nome);
     }
   });
+  agendarLimpezaEnviados();
 
   return Object.assign(estado(), { envio: { total: participantes.length, falhas } });
 }
@@ -224,9 +232,36 @@ function reenviar(req) {
   const cache = CacheService.getScriptCache();
   const chave = 'reenvio:' + email;
   if (cache.get(chave)) throw new Error('Já reenviamos para este e-mail há pouco. Aguarde 10 minutos.');
-  enviarResultado(quem, participantes, sorteio.pares, lerAlimentos());
+  enviarResultado(quem, sorteio.links[quem.id]);
   cache.put(chave, '1', INTERVALO_REENVIO_SEG);
+  agendarLimpezaEnviados();
   return { enviado: true };
+}
+
+// Página "Revelar": mostra o resultado a quem abriu o link do e-mail e registra a 1ª abertura,
+// para a pessoa perceber se alguém abriu o link antes dela.
+function revelar(req) {
+  const sorteio = lerSorteio();
+  if (!sorteio) throw new Error('O sorteio ainda não foi realizado.');
+  const token = String(req.token || '');
+  const id = token && Object.keys(sorteio.links).find(k => sorteio.links[k] === token);
+  const participantes = lerParticipantes();
+  const quem = id && participantes.find(p => p.id === id);
+  const amigo = quem && participantes.find(p => p.id === sorteio.pares[quem.id]);
+  if (!amigo) throw new Error('Este link não é válido. Peça um novo em "Reenviar meu resultado".');
+
+  const abertoEm = sorteio.vistos[id] || null;
+  if (!abertoEm) {
+    sorteio.vistos[id] = new Date().toISOString();
+    PropertiesService.getScriptProperties().setProperty(PROP_SORTEIO, JSON.stringify(sorteio));
+  }
+  return {
+    nome: quem.nome,
+    amigo: amigo.nome,
+    desejos: amigo.desejos,
+    itens: lerAlimentos().filter(a => a.responsavelId === quem.id).map(a => a.item),
+    abertoEm,
+  };
 }
 
 function desfazerSorteio(req) {
@@ -245,7 +280,7 @@ function pedirLinkEdicao(req) {
   const cache = CacheService.getScriptCache();
   if (cache.get('link:' + p.id)) throw new Error('Um link acabou de ser enviado para este e-mail. Aguarde 5 minutos.');
 
-  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  const token = novoToken();
   cache.put('edicao:' + token, p.id, VALIDADE_LINK_SEG);
   cache.put('link:' + p.id, '1', INTERVALO_LINK_SEG);
 
@@ -255,7 +290,7 @@ function pedirLinkEdicao(req) {
     subject: `✏️ Editar seus desejos — ${NOME_EVENTO}`,
     htmlBody: moldura(`Olá, ${esc(p.nome)}! ✏️`, `
       <p style="margin:0 0 16px">Use o botão abaixo para editar a sua lista de desejos.</p>
-      <p style="margin:0 0 16px"><a href="${esc(link)}" style="display:inline-block;background:#14532d;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Editar meus desejos</a></p>
+      ${botaoHtml(link, 'Editar meus desejos')}
       <p style="margin:0;font-size:13px;color:#666">O link vale por 6 horas. Se não foi você que pediu, é só ignorar este e-mail.</p>`),
     name: 'Amigo Secreto da Família',
   });
@@ -280,7 +315,8 @@ function salvarDesejos(req) {
     const idQuemTirou = Object.keys(sorteio.pares).find(id => sorteio.pares[id] === p.id);
     const quemTirou = lerParticipantes().find(x => x.id === idQuemTirou);
     if (quemTirou) {
-      enviarDesejosAtualizados(quemTirou, p.nome, desejos);
+      enviarDesejosAtualizados(quemTirou, sorteio.links[quemTirou.id]);
+      agendarLimpezaEnviados();
       avisado = true;
     }
   }
@@ -351,37 +387,38 @@ function estado() {
 }
 
 // ===== E-mail =====
-function enviarResultado(quem, participantes, pares, alimentos) {
-  const amigo = participantes.find(p => p.id === pares[quem.id]);
-  if (!amigo) throw new Error('Par não encontrado para ' + quem.nome);
-  const meusItens = alimentos.filter(a => a.responsavelId === quem.id).map(a => a.item);
-
+// Os e-mails do sorteio não trazem o nome do amigo secreto: assim a cópia que fica na conta
+// de quem envia não revela nada. O resultado só aparece na página, pelo link pessoal.
+function enviarResultado(quem, token) {
   MailApp.sendEmail({
     to: quem.email,
-    subject: `🎁 Seu amigo secreto — ${NOME_EVENTO}`,
+    subject: ASSUNTO_RESULTADO,
     htmlBody: moldura(`Olá, ${esc(quem.nome)}! 🎄`, `
-      <p style="margin:0 0 4px">Seu amigo secreto é:</p>
-      <p style="font-size:26px;font-weight:bold;color:#b91c1c;margin:0 0 16px">🎁 ${esc(amigo.nome)}</p>
-      <strong>Gostaria de ganhar:</strong>
-      ${listaHtml(amigo.desejos, 'Não deixou sugestões — capriche na surpresa!')}
-      <hr style="border:0;border-top:1px solid #eadfc8;margin:20px 0">
-      <strong>🍗 Você vai levar para a ceia:</strong>
-      ${listaHtml(meusItens, 'Nenhum item ficou com você desta vez. 😉')}
-      <p style="margin:24px 0 0;font-size:13px;color:#666">Guarde segredo! 🤫 Este e-mail foi enviado só para você.</p>`),
+      <p style="margin:0 0 16px">O sorteio do amigo secreto foi feito! Toque no botão para descobrir quem você tirou e o que vai levar para a ceia.</p>
+      ${botaoHtml(linkRevelar(token), '🎁 Descobrir meu amigo secreto')}
+      <p style="margin:0;font-size:13px;color:#666">Guarde este e-mail: o link vale até a festa. Ele é só seu, não encaminhe para ninguém. 🤫</p>`),
     name: 'Amigo Secreto da Família',
   });
 }
 
-function enviarDesejosAtualizados(quem, nomeAmigo, desejos) {
+function enviarDesejosAtualizados(quem, token) {
   MailApp.sendEmail({
     to: quem.email,
-    subject: `🎁 Seu amigo secreto atualizou a lista de desejos — ${NOME_EVENTO}`,
+    subject: ASSUNTO_ATUALIZACAO,
     htmlBody: moldura(`Olá, ${esc(quem.nome)}! 🎁`, `
-      <p style="margin:0 0 16px"><strong>${esc(nomeAmigo)}</strong>, o seu amigo secreto, atualizou a lista de desejos:</p>
-      ${listaHtml(desejos, 'A lista ficou vazia — capriche na surpresa!')}
-      <p style="margin:24px 0 0;font-size:13px;color:#666">Guarde segredo! 🤫 Este e-mail foi enviado só para você.</p>`),
+      <p style="margin:0 0 16px">O seu amigo secreto atualizou a lista de desejos. Toque no botão para ver a lista nova.</p>
+      ${botaoHtml(linkRevelar(token), '🎁 Ver a lista atualizada')}
+      <p style="margin:0;font-size:13px;color:#666">Guarde segredo! 🤫</p>`),
     name: 'Amigo Secreto da Família',
   });
+}
+
+function linkRevelar(token) {
+  return URL_PAGINA + '?ver=' + token;
+}
+
+function botaoHtml(link, rotulo) {
+  return `<p style="margin:0 0 16px"><a href="${esc(link)}" style="display:inline-block;background:#14532d;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">${rotulo}</a></p>`;
 }
 
 function moldura(titulo, conteudo) {
@@ -397,10 +434,37 @@ function moldura(titulo, conteudo) {
   </div>`;
 }
 
-function listaHtml(itens, textoVazio) {
-  return itens.length
-    ? '<ul style="margin:8px 0 0;padding-left:20px">' + itens.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>'
-    : `<p style="margin:8px 0 0;color:#666">${textoVazio}</p>`;
+// ===== Limpeza da pasta "Enviados" =====
+// Os filtros do Gmail não agem sobre e-mails enviados, então o próprio script move essas cópias
+// para a lixeira. Espera 1 minuto depois do envio, o tempo de o Gmail indexar as mensagens.
+function agendarLimpezaEnviados() {
+  try {
+    removerGatilhosLimpeza();
+    ScriptApp.newTrigger('limparEnviados').timeBased().after(60 * 1000).create();
+  } catch (err) {
+    // Sem a autorização de autorizarLimpeza() o e-mail sai normalmente; só a cópia fica em "Enviados".
+    console.warn('Limpeza de Enviados não agendada: ' + err.message);
+  }
+}
+
+function limparEnviados() {
+  removerGatilhosLimpeza();
+  const eu = Session.getEffectiveUser().getEmail().toLowerCase();
+  const assuntos = [ASSUNTO_RESULTADO, ASSUNTO_ATUALIZACAO];
+  // Só mexe em mensagens enviadas por mim com exatamente esses assuntos (respostas da família ficam).
+  GmailApp.search('in:sent subject:(sorteio OR atualizou) newer_than:60d').forEach(thread => {
+    thread.getMessages().forEach(m => {
+      if (assuntos.includes(m.getSubject()) && m.getFrom().toLowerCase().includes(eu) && !m.isInTrash()) {
+        m.moveToTrash();
+      }
+    });
+  });
+}
+
+function removerGatilhosLimpeza() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'limparEnviados')
+    .forEach(t => ScriptApp.deleteTrigger(t));
 }
 
 // ===== Planilha =====
@@ -492,6 +556,10 @@ function exigirPin(pin) {
   cache.remove('falhasPin');
 }
 
+function novoToken() {
+  return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+}
+
 function texto(valor, max) {
   return String(valor == null ? '' : valor).trim().slice(0, max);
 }
@@ -531,4 +599,10 @@ function configurar() {
   const eu = Session.getEffectiveUser().getEmail();
   MailApp.sendEmail(eu, `Teste — ${NOME_EVENTO}`, 'Tudo certo! O sistema do amigo secreto já consegue enviar e-mails. 🎄');
   Logger.log('Pronto! Abas criadas e e-mail de teste enviado para ' + eu);
+}
+
+/** Execute UMA vez pelo editor: autoriza o script a mover os e-mails do sorteio de "Enviados" para a lixeira. */
+function autorizarLimpeza() {
+  limparEnviados();
+  Logger.log('Pronto! Os e-mails do sorteio vão sair da pasta Enviados automaticamente.');
 }

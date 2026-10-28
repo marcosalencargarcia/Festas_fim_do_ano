@@ -265,6 +265,25 @@ body:not(.bloqueado) .portao,
 .bloqueado .cartao:not(.portao) { display: none; }
 .portao { border-top: 4px solid var(--dourado); }
 .cartao--edicao { border-top: 4px solid var(--verde); }
+.cartao--revelar { border-top: 4px solid var(--vermelho); }
+.revelar__aviso {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: .9rem;
+  background: #e3efe6;
+}
+.revelar__aviso--alerta { background: #fff4d6; border: 1px solid var(--dourado); }
+.revelar__ola { margin: 0; }
+.revelar__amigo {
+  margin: 4px 0 8px;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--vermelho);
+}
+.revelar__lista { margin: 4px 0 8px; padding-left: 20px; }
+.revelar__lista + .btn { margin-top: 12px; }
 
 .pessoa__acoes { display: flex; gap: 2px; }
 .editar {

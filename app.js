@@ -248,6 +248,7 @@ $('#form-portao').addEventListener('submit', async e => {
     form.reset();
     toast('Bem-vindo(a)! 🎄');
     abrirEdicao();
+    mostrarRevelar();
   }
 });
 
@@ -293,17 +294,58 @@ $('#lista-participantes').addEventListener('click', e => {
 
 // ===== Edição dos próprios desejos (link do e-mail) =====
 let tokenEdicao = '';
+let tokenRevelar = '';
 
-// O link do e-mail traz ?editar=<token>: guarda o token e limpa o endereço.
-(function lerTokenDaUrl() {
+// Os links dos e-mails trazem ?editar=<token> ou ?ver=<token>: guarda o token e limpa o endereço,
+// para ele não ficar no histórico nem ser copiado junto com o link da página.
+(function lerTokensDaUrl() {
   const params = new URLSearchParams(location.search);
-  const token = params.get('editar');
-  if (!token) return;
-  tokenEdicao = token;
+  tokenEdicao = params.get('editar') || '';
+  tokenRevelar = params.get('ver') || '';
+  if (!tokenEdicao && !tokenRevelar) return;
   params.delete('editar');
+  params.delete('ver');
   const resto = params.toString();
   history.replaceState(null, '', location.pathname + (resto ? '?' + resto : '') + location.hash);
 })();
+
+// ===== Revelar o amigo secreto (link do e-mail do sorteio) =====
+function mostrarRevelar() {
+  if (!tokenRevelar) return;
+  $('#revelar-antes').hidden = false;
+  $('#revelar-depois').hidden = true;
+  $('#painel-revelar').hidden = false;
+  $('#painel-revelar').scrollIntoView({ behavior: 'smooth' });
+}
+
+$('#botao-revelar').addEventListener('click', async () => {
+  const r = await executar(() => api.chamar('revelar', { token: tokenRevelar }));
+  if (!r) return;
+  const aviso = $('#revelar-aviso');
+  if (r.abertoEm) {
+    const quando = new Date(r.abertoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    aviso.textContent = `⚠️ Este link foi aberto pela primeira vez em ${quando}. Se não foi você, alguém pode ter espiado: avise o organizador.`;
+    aviso.className = 'revelar__aviso revelar__aviso--alerta';
+  } else {
+    aviso.textContent = '✅ Primeira vez que este link é aberto: ninguém espiou! 🤫';
+    aviso.className = 'revelar__aviso';
+  }
+  $('#revelar-nome').textContent = r.nome;
+  $('#revelar-amigo').textContent = `🎁 ${r.amigo}`;
+  $('#revelar-desejos').innerHTML = r.desejos.length
+    ? r.desejos.map(d => `<li>${esc(d)}</li>`).join('')
+    : '<li>Não deixou sugestões. Capriche na surpresa!</li>';
+  $('#revelar-itens').innerHTML = r.itens.length
+    ? r.itens.map(i => `<li>${esc(i)}</li>`).join('')
+    : '<li>Nenhum item ficou com você desta vez. 😉</li>';
+  $('#revelar-antes').hidden = true;
+  $('#revelar-depois').hidden = false;
+});
+
+$('#fechar-revelar').addEventListener('click', () => {
+  tokenRevelar = '';
+  $('#painel-revelar').hidden = true;
+});
 
 async function abrirEdicao() {
   if (!tokenEdicao) return;
@@ -545,9 +587,7 @@ function criarApiDemo() {
     };
   };
   const enviar = p => {
-    const amigo = db.participantes.find(x => x.id === db.sorteio.pares[p.id]);
-    const itens = db.alimentos.filter(a => a.responsavelId === p.id).map(a => a.item);
-    console.info(`📧 [demo] Para ${p.email}: seu amigo secreto é ${amigo.nome} (deseja: ${amigo.desejos.join(', ') || '—'}). Você leva: ${itens.join(', ') || 'nada'}.`);
+    console.info(`📧 [demo] Para ${p.email}: o sorteio foi feito! Link: ${location.pathname}?ver=demo-ver-${p.id}`);
   };
 
   const porToken = token => {
@@ -646,7 +686,7 @@ function criarApiDemo() {
         a.responsavelId = escolhido;
         contagem[escolhido]++;
       });
-      db.sorteio = { pares, data: new Date().toISOString() };
+      db.sorteio = { pares, vistos: {}, data: new Date().toISOString() };
       db.participantes.forEach(enviar);
       return { envio: { total: db.participantes.length, falhas: [] } };
     },
@@ -656,6 +696,18 @@ function criarApiDemo() {
       if (!p) throw new Error('Este e-mail não está entre os participantes.');
       enviar(p);
       return { enviado: true };
+    },
+    revelar({ token }) {
+      if (!db.sorteio) throw new Error('O sorteio ainda não foi realizado.');
+      const quem = db.participantes.find(x => 'demo-ver-' + x.id === token);
+      const amigo = quem && db.participantes.find(x => x.id === db.sorteio.pares[quem.id]);
+      if (!amigo) throw new Error('Este link não é válido. Peça um novo em "Reenviar meu resultado".');
+      const abertoEm = db.sorteio.vistos[quem.id] || null;
+      if (!abertoEm) db.sorteio.vistos[quem.id] = new Date().toISOString();
+      return {
+        nome: quem.nome, amigo: amigo.nome, desejos: amigo.desejos,
+        itens: db.alimentos.filter(a => a.responsavelId === quem.id).map(a => a.item), abertoEm,
+      };
     },
     desfazerSorteio({ pin: p }) {
       pin(p);
@@ -669,7 +721,7 @@ function criarApiDemo() {
     async chamar(action, dados = {}) {
       const extra = acoes[action](dados);
       salvar();
-      return ['reenviar', 'pedirLinkEdicao', 'abrirEdicao'].includes(action) ? extra : { ...publico(), ...extra };
+      return ['reenviar', 'pedirLinkEdicao', 'abrirEdicao', 'revelar'].includes(action) ? extra : { ...publico(), ...extra };
     },
   };
 }
@@ -677,7 +729,7 @@ function criarApiDemo() {
 // ===== Início =====
 $('#aviso-demo').hidden = !!API_URL;
 if (API_URL && !codigoFamilia) bloquear();
-else carregar().then(ok => { if (ok) abrirEdicao(); });
+else carregar().then(ok => { if (ok) { abrirEdicao(); mostrarRevelar(); } });
 // Atualiza a lista de tempos em tempos para mostrar o que os outros adicionaram.
 const podeAtualizar = () => !document.hidden && !ocupado && (codigoFamilia || !API_URL);
 setInterval(() => { if (podeAtualizar()) carregar(true); }, 20000);
