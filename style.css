@@ -406,7 +406,7 @@ select {
   white-space: nowrap;
 }
 .mensagem--minha .mensagem__citacao { justify-self: end; }
-.chat__form { margin-bottom: 0; gap: 10px; }
+.chat__form { margin-bottom: 0; gap: 10px; grid-template-columns: minmax(0, 1fr); }
 .chat__respondendo {
   display: flex;
   align-items: center;
@@ -418,8 +418,9 @@ select {
   border-radius: 6px;
   font-size: .85rem;
 }
-.chat__respondendo > div { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat__respondendo strong { margin-right: 6px; }
+.chat__respondendo > div { display: grid; min-width: 0; }
+.chat__respondendo > div > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat__respondendo > div > span { color: var(--texto-suave); }
 .chat__respondendo[hidden] { display: none; }
 
 @media (max-width: 480px) {
