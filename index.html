@@ -150,11 +150,15 @@
       </div>
     </section>
 
-    <section class="cartao">
+    <section class="cartao" id="recadinhos">
       <div class="cartao__cabeca"><h2>💬 Recadinhos</h2></div>
       <ul id="lista-mensagens" class="chat" aria-live="polite"></ul>
       <form id="form-chat" class="form chat__form">
         <input name="nome" required maxlength="40" autocomplete="name" placeholder="Seu nome" aria-label="Seu nome">
+        <div id="chat-respondendo" class="chat__respondendo" hidden>
+          <div><strong>↩️ Respondendo a <span id="respondendo-nome"></span></strong><span id="respondendo-texto"></span></div>
+          <button type="button" id="cancelar-resposta" class="mensagem__apagar" aria-label="Cancelar resposta">✕</button>
+        </div>
         <div class="form--linha">
           <input name="texto" required maxlength="300" autocomplete="off" placeholder="Escreva uma mensagem…" aria-label="Mensagem">
           <button class="btn btn--primario" type="submit">Enviar</button>

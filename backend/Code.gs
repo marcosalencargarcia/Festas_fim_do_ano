@@ -31,6 +31,8 @@ const INTERVALO_LINK_SEG = 5 * 60;
 
 const MAX_MENSAGENS = 50;
 const INTERVALO_MENSAGEM_SEG = 3;
+// Cada pessoa recebe no máximo um aviso de resposta a cada 5 minutos (evita lotar a caixa dela).
+const INTERVALO_AVISO_RESPOSTA_SEG = 5 * 60;
 
 const ABA_PARTICIPANTES = 'Participantes';
 const ABA_ALIMENTOS = 'Alimentos';
@@ -344,8 +346,57 @@ function enviarMensagem(req) {
   if (cache.get(chave)) throw new Error('Calma! Espere uns segundos para mandar outra mensagem.');
   cache.put(chave, '1', INTERVALO_MENSAGEM_SEG);
 
-  abaMensagens().appendRow([Utilities.getUuid(), celula(nome), celula(mensagem), new Date()]);
-  return estado();
+  // Resposta: guarda o id da mensagem original e avisa o autor dela por e-mail.
+  const original = req.respondeA ? lerTodasMensagens().find(m => m.id === String(req.respondeA)) : null;
+  if (req.respondeA && !original) throw new Error('A mensagem que você quer responder não existe mais.');
+
+  abaMensagens().appendRow([
+    Utilities.getUuid(), celula(nome), celula(mensagem), new Date(), original ? original.id : '',
+  ]);
+  const avisado = original ? avisarResposta(original, nome, mensagem) : '';
+  return Object.assign(estado(), { avisado });
+}
+
+// O nome do chat é digitado livremente, então procura o participante com o mesmo nome
+// (ou, se só houver um, com o mesmo primeiro nome). Devolve o nome de quem foi avisado.
+function avisarResposta(original, nomeQuemResponde, resposta) {
+  const autor = normalizarNome(original.nome);
+  if (!autor || autor === normalizarNome(nomeQuemResponde)) return '';
+
+  const participantes = lerParticipantes();
+  let dono = participantes.find(p => normalizarNome(p.nome) === autor);
+  if (!dono) {
+    const mesmoPrimeiroNome = participantes.filter(p => normalizarNome(p.nome).split(' ')[0] === autor.split(' ')[0]);
+    if (mesmoPrimeiroNome.length === 1) dono = mesmoPrimeiroNome[0];
+  }
+  if (!dono) return '';
+
+  const cache = CacheService.getScriptCache();
+  const chave = 'avisoResposta:' + dono.id;
+  if (cache.get(chave) || MailApp.getRemainingDailyQuota() < 1) return '';
+
+  try {
+    MailApp.sendEmail({
+      to: dono.email,
+      subject: `💬 ${nomeQuemResponde} respondeu seu recado — ${NOME_EVENTO}`,
+      htmlBody: moldura(`Olá, ${esc(dono.nome)}! 💬`, `
+        <p style="margin:0 0 12px"><strong>${esc(nomeQuemResponde)}</strong> respondeu a sua mensagem nos Recadinhos:</p>
+        <div style="margin:0 0 8px;padding:8px 12px;border-left:3px solid #c9b88f;color:#666;font-size:14px;white-space:pre-wrap">${esc(original.texto)}</div>
+        <div style="margin:0 0 16px;padding:10px 14px;background:#e3efe6;border-radius:8px;white-space:pre-wrap">${esc(resposta)}</div>
+        ${botaoHtml(URL_PAGINA + '#recadinhos', '💬 Ver a conversa')}
+        <p style="margin:0;font-size:13px;color:#666">Você recebe no máximo um aviso destes a cada 5 minutos.</p>`),
+      name: 'Amigo Secreto da Família',
+    });
+  } catch (err) {
+    console.warn('Aviso de resposta não enviado: ' + err.message);
+    return '';
+  }
+  cache.put(chave, '1', INTERVALO_AVISO_RESPOSTA_SEG);
+  return dono.nome;
+}
+
+function normalizarNome(nome) {
+  return String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function apagarMensagem(req) {
@@ -480,7 +531,10 @@ function abaAlimentos() {
 }
 
 function abaMensagens() {
-  return aba(ABA_MENSAGENS, ['id', 'nome', 'texto', 'criadoEm']);
+  const sh = aba(ABA_MENSAGENS, ['id', 'nome', 'texto', 'criadoEm', 'respondeA']);
+  // Planilhas criadas antes das respostas não têm a 5ª coluna no cabeçalho.
+  if (sh.getRange(1, 5).getValue() !== 'respondeA') sh.getRange(1, 5).setValue('respondeA');
+  return sh;
 }
 
 function aba(nome, cabecalho) {
@@ -513,11 +567,26 @@ function lerAlimentos() {
   }));
 }
 
-function lerMensagens() {
-  return linhasComId(abaMensagens()).slice(-MAX_MENSAGENS).map(r => ({
+function lerTodasMensagens() {
+  return linhasComId(abaMensagens()).map(r => ({
     id: String(r[0]), nome: String(r[1]), texto: String(r[2]),
     quando: r[3] instanceof Date ? r[3].toISOString() : '',
+    respondeA: String(r[4] || ''),
   }));
+}
+
+// As últimas mensagens, cada resposta com um trecho da original (mesmo que ela já seja antiga).
+function lerMensagens() {
+  const todas = lerTodasMensagens();
+  const porId = {};
+  todas.forEach(m => { porId[m.id] = m; });
+  return todas.slice(-MAX_MENSAGENS).map(m => {
+    const original = m.respondeA && porId[m.respondeA];
+    return {
+      id: m.id, nome: m.nome, texto: m.texto, quando: m.quando,
+      resposta: m.respondeA ? (original ? { id: original.id, nome: original.nome, texto: original.texto.slice(0, 120) } : { apagada: true }) : null,
+    };
+  });
 }
 
 function linhaPorId(sh, id) {
