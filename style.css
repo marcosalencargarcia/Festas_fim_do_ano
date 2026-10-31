@@ -427,3 +427,42 @@ select {
   .cartao { padding: 18px 16px; }
   .form--linha .btn { flex: 1 1 100%; }
 }
+
+/* ===== Votação do valor dos presentes ===== */
+.cartao--votacao { border-top: 4px solid var(--dourado); }
+.votacao__opcoes { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.votacao__opcao {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--texto);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+}
+button.votacao__opcao { cursor: pointer; }
+button.votacao__opcao:hover { border-color: var(--verde); }
+.votacao__opcao--minha { border: 2px solid var(--verde); }
+.votacao__barra {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #e3efe6;
+  transition: width .3s;
+}
+.votacao__opcao > :not(.votacao__barra) { position: relative; }
+.votacao__topo { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.votacao__nomes { color: var(--texto-suave); font-size: .82rem; overflow-wrap: anywhere; }
+.votacao__resultado {
+  margin: 0 0 12px;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--vermelho);
+}
+.votacao__acordo { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: #e3efe6; font-weight: 600; }
+.revelar__valor { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: #fff4d6; }

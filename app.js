@@ -113,6 +113,7 @@ function render() {
   }
 
   renderMensagens(estado.mensagens || []);
+  renderVotacao();
 
   $('#sorteio-aberto').hidden = sorteado;
   $('#sorteio-feito').hidden = !sorteado;
@@ -154,6 +155,83 @@ function renderMensagens(mensagens) {
     }).join('')
     : '<li class="chat__vazio">Nenhum recado ainda. Que tal mandar um "Feliz Natal"? 🎄</li>';
   if (estavaNoFim) lista.scrollTop = lista.scrollHeight;
+}
+
+// ===== Votação do valor dos presentes =====
+const CHAVE_VOTO = 'amigo-secreto-voto';
+let tokenVoto = lerLocal(CHAVE_VOTO);
+let meuVoto = null; // { nome, voto } de quem abriu o link pessoal de votação
+
+function renderVotacao() {
+  const v = estado.votacao;
+  const caixa = $('#votacao-conteudo');
+  const aberta = !!(v && v.aberta);
+  $('#form-abrir-votacao').hidden = aberta;
+  $('#votacao-gerenciar').hidden = !aberta;
+
+  const pedir = $('#form-pedir-voto');
+  pedir.hidden = !aberta || !!meuVoto;
+  if (!pedir.hidden && !pedir.contains(document.activeElement)) {
+    pedir.pessoa.innerHTML = '<option value="">Não recebeu o link? Escolha seu nome…</option>'
+      + estado.participantes.map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join('');
+  }
+
+  if (!v) {
+    caixa.innerHTML = '<p class="dica">Ainda não há votação. Quando o organizador abrir, cada participante recebe um e-mail com um link para votar no valor do presente.</p>';
+    return;
+  }
+
+  const total = v.opcoes.reduce((n, o) => n + o.nomes.length, 0);
+  const podeVotar = aberta && meuVoto;
+  const opcoes = v.opcoes.map((o, i) => {
+    const pct = total ? Math.round(o.nomes.length / total * 100) : 0;
+    const minha = meuVoto && meuVoto.voto === i;
+    const tag = podeVotar ? 'button' : 'div';
+    return `<li><${tag} class="votacao__opcao${minha ? ' votacao__opcao--minha' : ''}"${podeVotar ? ` type="button" data-votar="${i}"` : ''}>
+      <span class="votacao__barra" style="width:${pct}%"></span>
+      <span class="votacao__topo"><span>${minha ? '✅ ' : ''}${esc(o.rotulo)}</span><span>${o.nomes.length} voto(s)</span></span>
+      ${o.nomes.length ? `<span class="votacao__nomes">${o.nomes.map(esc).join(', ')}</span>` : ''}
+    </${tag}></li>`;
+  }).join('');
+
+  if (!aberta) {
+    caixa.innerHTML = `<p class="dica">Votação encerrada. Valor combinado para o presente:</p>
+      <p class="votacao__resultado">💰 ${esc(v.valorFinal)}</p>
+      <ul class="votacao__opcoes">${opcoes}</ul>`;
+    return;
+  }
+
+  const unanime = !v.faltam.length && v.opcoes.find(o => o.nomes.length === total);
+  caixa.innerHTML = `
+    <p class="dica">${podeVotar
+      ? `Votando como <strong>${esc(meuVoto.nome)}</strong>. Toque na sua opção (dá para trocar depois):`
+      : 'Para votar, toque no link que chegou no seu e-mail.'}</p>
+    <ul class="votacao__opcoes">${opcoes}</ul>
+    ${unanime ? `<p class="votacao__acordo">🎉 Todos concordaram com ${esc(unanime.rotulo)}! O organizador já pode encerrar.</p>` : ''}
+    <p class="dica"><strong>${total} de ${total + v.faltam.length}</strong> já votaram.${v.faltam.length ? ` Faltam: ${v.faltam.map(esc).join(', ')}.` : ''}</p>`;
+
+  const encerrar = $('#form-encerrar-votacao').opcao;
+  if (document.activeElement !== encerrar) {
+    const ordem = v.opcoes.map((o, i) => ({ ...o, i })).sort((a, b) => b.nomes.length - a.nomes.length);
+    encerrar.innerHTML = ordem.map(o => `<option value="${o.i}">${esc(o.rotulo)} (${o.nomes.length} voto(s))</option>`).join('');
+  }
+}
+
+// Confere de quem é o link de votação guardado. Link velho (de outra votação) é esquecido em silêncio.
+async function abrirVoto(avisar) {
+  if (!tokenVoto) return;
+  try {
+    meuVoto = await api.chamar('abrirVoto', { token: tokenVoto });
+    salvarLocal(CHAVE_VOTO, tokenVoto);
+  } catch (err) {
+    if (err instanceof ErroCodigo) return;
+    meuVoto = null;
+    tokenVoto = '';
+    salvarLocal(CHAVE_VOTO, '');
+    if (avisar) toast(err.message, true);
+  }
+  if (estado) render();
+  if (avisar && meuVoto) $('#votacao').scrollIntoView({ behavior: 'smooth' });
 }
 
 // Campo de desejos: o que é digitado vira um chip ao apertar Enter (ou vírgula).
@@ -254,6 +332,7 @@ $('#form-portao').addEventListener('submit', async e => {
     toast('Bem-vindo(a)! 🎄');
     abrirEdicao();
     mostrarRevelar();
+    abrirVoto(votoDaUrl);
   }
 });
 
@@ -300,6 +379,7 @@ $('#lista-participantes').addEventListener('click', e => {
 // ===== Edição dos próprios desejos (link do e-mail) =====
 let tokenEdicao = '';
 let tokenRevelar = '';
+let votoDaUrl = false;
 
 // Os links dos e-mails trazem ?editar=<token> ou ?ver=<token>: guarda o token e limpa o endereço,
 // para ele não ficar no histórico nem ser copiado junto com o link da página.
@@ -307,9 +387,14 @@ let tokenRevelar = '';
   const params = new URLSearchParams(location.search);
   tokenEdicao = params.get('editar') || '';
   tokenRevelar = params.get('ver') || '';
-  if (!tokenEdicao && !tokenRevelar) return;
+  if (params.get('votar')) {
+    tokenVoto = params.get('votar');
+    votoDaUrl = true;
+  }
+  if (!tokenEdicao && !tokenRevelar && !votoDaUrl) return;
   params.delete('editar');
   params.delete('ver');
+  params.delete('votar');
   const resto = params.toString();
   history.replaceState(null, '', location.pathname + (resto ? '?' + resto : '') + location.hash);
 })();
@@ -337,6 +422,9 @@ $('#botao-revelar').addEventListener('click', async () => {
   }
   $('#revelar-nome').textContent = r.nome;
   $('#revelar-amigo').textContent = `🎁 ${r.amigo}`;
+  const valor = estado && estado.votacao && estado.votacao.valorFinal;
+  $('#revelar-valor').hidden = !valor;
+  $('#revelar-valor').textContent = valor ? `💰 Valor combinado do presente: ${valor}` : '';
   $('#revelar-desejos').innerHTML = r.desejos.length
     ? r.desejos.map(d => `<li>${esc(d)}</li>`).join('')
     : '<li>Não deixou sugestões. Capriche na surpresa!</li>';
@@ -518,6 +606,72 @@ $('#lista-mensagens').addEventListener('click', e => {
   }, 'Mensagem apagada.');
 });
 
+$('#votacao').addEventListener('click', e => {
+  const btn = e.target.closest('[data-votar]');
+  if (!btn || !meuVoto) return;
+  const opcao = Number(btn.dataset.votar);
+  const rotulo = estado.votacao.opcoes[opcao].rotulo;
+  executar(async () => {
+    estado = await api.chamar('votar', { token: tokenVoto, opcao });
+    meuVoto.voto = opcao;
+    render();
+  }, `Voto registrado: ${rotulo} 🗳️`);
+});
+
+$('#form-pedir-voto').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.target;
+  const p = estado.participantes.find(x => x.id === form.pessoa.value);
+  if (!p || !confirm(`Enviar o link de votação para o e-mail de ${p.nome} (${p.email})?`)) return;
+  const ok = await executar(() => api.chamar('reenviarVoto', { id: p.id }),
+    `Link enviado para ${p.email}. Abra o e-mail e toque em "Votar agora".`);
+  if (ok) form.reset();
+});
+
+$('#form-abrir-votacao').addEventListener('submit', e => {
+  e.preventDefault();
+  const form = e.target;
+  const opcoes = form.opcoes.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (opcoes.length < 2) return toast('Informe pelo menos 2 opções, separadas por vírgula.', true);
+  const n = estado.participantes.length;
+  if (!confirm(`Abrir a votação com as opções:\n\n${opcoes.join('\n')}\n\n${n} e-mail(s) serão enviados.`)) return;
+  executar(async () => {
+    const r = await api.chamar('abrirVotacao', { opcoes, pin: form.pin.value });
+    estado = r;
+    meuVoto = null; // o link guardado era da votação anterior
+    tokenVoto = '';
+    salvarLocal(CHAVE_VOTO, '');
+    form.reset();
+    render();
+    return r.envio;
+  }, envio => envio.falhas.length
+    ? `Votação aberta, mas falhou o envio para: ${envio.falhas.join(', ')}. Eles podem pedir o link na página.`
+    : `🗳️ Votação aberta! ${envio.total} e-mail(s) enviados.`);
+});
+
+$('#form-lembrar-votacao').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.target;
+  const ok = await executar(() => api.chamar('lembrarVotacao', { pin: form.pin.value }),
+    r => `Lembrete enviado para ${r.total} pessoa(s).${r.falhas.length ? ` Falhou para: ${r.falhas.join(', ')}.` : ''}`);
+  if (ok) form.reset();
+});
+
+$('#form-encerrar-votacao').addEventListener('submit', e => {
+  e.preventDefault();
+  const form = e.target;
+  const opcao = Number(form.opcao.value);
+  const v = estado.votacao;
+  const rotulo = v.opcoes[opcao].rotulo;
+  const faltam = v.faltam.length ? `\n\nAinda não votaram: ${v.faltam.join(', ')}.` : '';
+  if (!confirm(`Encerrar a votação com o valor ${rotulo}?${faltam}\n\nTodos recebem um e-mail com o valor combinado.`)) return;
+  executar(async () => {
+    estado = await api.chamar('encerrarVotacao', { opcao, pin: form.pin.value });
+    form.reset();
+    render();
+  }, `Votação encerrada: ${rotulo}. Todos foram avisados por e-mail. 💰`);
+});
+
 $('#form-sortear').addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
@@ -579,7 +733,7 @@ function toast(msg, erro = false) {
 function criarApiDemo() {
   const CHAVE = 'amigo-secreto-demo';
   const PIN = '1234';
-  let db = { participantes: [], alimentos: [], mensagens: [], sorteio: null };
+  let db = { participantes: [], alimentos: [], mensagens: [], sorteio: null, votacao: null };
   try { db = JSON.parse(localStorage.getItem(CHAVE)) || db; } catch { /* sem armazenamento */ }
   db.mensagens = db.mensagens || [];
   const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* ignora */ } };
@@ -609,6 +763,14 @@ function criarApiDemo() {
         id: a.id, item: a.item, escolhidoPor: nomes[a.escolhidoPor] || '',
         responsavel: db.sorteio ? nomes[a.responsavelId] || '' : '',
       })),
+      votacao: db.votacao && {
+        aberta: db.votacao.aberta,
+        valorFinal: db.votacao.valorFinal,
+        opcoes: db.votacao.opcoes.map((rotulo, i) => ({
+          rotulo, nomes: db.participantes.filter(p => db.votacao.votos[p.id] === i).map(p => p.nome),
+        })),
+        faltam: db.participantes.filter(p => db.votacao.votos[p.id] == null).map(p => p.nome),
+      },
       mensagens: db.mensagens.slice(-50).map(m => {
         const o = m.respondeA && db.mensagens.find(x => x.id === m.respondeA);
         return {
@@ -620,6 +782,19 @@ function criarApiDemo() {
   };
   const enviar = p => {
     console.info(`📧 [demo] Para ${p.email}: o sorteio foi feito! Link: ${location.pathname}?ver=demo-ver-${p.id}`);
+  };
+
+  const convidar = p => {
+    console.info(`📧 [demo] Para ${p.email}: vote no valor do presente: ${location.pathname}?votar=demo-voto-${p.id}`);
+  };
+  const votante = token => {
+    const p = db.votacao && db.participantes.find(x => 'demo-voto-' + x.id === token);
+    if (!p) throw new Error('Este link de votação não é válido. Peça um novo na página.');
+    return p;
+  };
+  const votacaoAberta = () => {
+    if (!db.votacao || !db.votacao.aberta) throw new Error('Não há votação aberta.');
+    return db.votacao;
   };
 
   const porToken = token => {
@@ -702,6 +877,48 @@ function criarApiDemo() {
       pin(p);
       db.mensagens = db.mensagens.filter(m => m.id !== alvo);
     },
+    abrirVotacao({ opcoes, pin: p }) {
+      pin(p);
+      if (db.votacao && db.votacao.aberta) throw new Error('Já existe uma votação aberta. Encerre-a antes de abrir outra.');
+      opcoes = [...new Set(opcoes.map(o => String(o).trim().slice(0, 30)).filter(Boolean))];
+      if (opcoes.length < 2 || opcoes.length > 6) throw new Error('Informe de 2 a 6 opções de valor.');
+      if (!db.participantes.length) throw new Error('Ainda não há participantes para votar.');
+      db.votacao = { opcoes, votos: {}, aberta: true, valorFinal: '' };
+      db.participantes.forEach(convidar);
+      return { envio: { total: db.participantes.length, falhas: [] } };
+    },
+    abrirVoto({ token }) {
+      const p = votante(token);
+      const voto = db.votacao.votos[p.id];
+      return { nome: p.nome, voto: voto == null ? null : voto };
+    },
+    votar({ token, opcao }) {
+      const p = votante(token);
+      if (!db.votacao.aberta) throw new Error('A votação já foi encerrada.');
+      db.votacao.votos[p.id] = opcao;
+    },
+    reenviarVoto({ id: alvo }) {
+      votacaoAberta();
+      const p = db.participantes.find(x => x.id === alvo);
+      if (!p) throw new Error('Participante não encontrado.');
+      convidar(p);
+      return { enviado: true };
+    },
+    lembrarVotacao({ pin: p }) {
+      pin(p);
+      const v = votacaoAberta();
+      const faltam = db.participantes.filter(x => v.votos[x.id] == null);
+      if (!faltam.length) throw new Error('Todo mundo já votou! 🎉');
+      faltam.forEach(convidar);
+      return { total: faltam.length, falhas: [] };
+    },
+    encerrarVotacao({ opcao, pin: p }) {
+      pin(p);
+      const v = votacaoAberta();
+      v.aberta = false;
+      v.valorFinal = v.opcoes[opcao];
+      console.info(`📧 [demo] Para todos: valor combinado ${v.valorFinal}`);
+    },
     sortear({ pin: p }) {
       pin(p);
       aberto();
@@ -760,7 +977,8 @@ function criarApiDemo() {
     async chamar(action, dados = {}) {
       const extra = acoes[action](dados);
       salvar();
-      return ['reenviar', 'pedirLinkEdicao', 'abrirEdicao', 'revelar'].includes(action) ? extra : { ...publico(), ...extra };
+      const soResultado = ['reenviar', 'pedirLinkEdicao', 'abrirEdicao', 'revelar', 'abrirVoto', 'reenviarVoto', 'lembrarVotacao'];
+      return soResultado.includes(action) ? extra : { ...publico(), ...extra };
     },
   };
 }
@@ -768,7 +986,7 @@ function criarApiDemo() {
 // ===== Início =====
 $('#aviso-demo').hidden = !!API_URL;
 if (API_URL && !codigoFamilia) bloquear();
-else carregar().then(ok => { if (ok) { abrirEdicao(); mostrarRevelar(); } });
+else carregar().then(ok => { if (ok) { abrirEdicao(); mostrarRevelar(); abrirVoto(votoDaUrl); } });
 // Atualiza a lista de tempos em tempos para mostrar o que os outros adicionaram.
 const podeAtualizar = () => !document.hidden && !ocupado && (codigoFamilia || !API_URL);
 setInterval(() => { if (podeAtualizar()) carregar(true); }, 20000);
