@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amigo Secreto dos Amigos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="topo__conteudo">
+      <p class="topo__sobre" id="evento">Amigo Secreto dos Amigos</p>
+      <h1>Amigo Secreto <span>&</span> Ceia</h1>
+      <p class="topo__sub">Cadastre-se, conte o que gostaria de ganhar e ajude a montar a lista da ceia.</p>
+      <span id="status" class="status">Carregando…</span>
+    </div>
+  </header>
+
+  <main class="conteudo">
+    <div id="aviso-demo" class="aviso" hidden>
+      <strong>Modo demonstração.</strong> Os dados ficam só neste navegador e nenhum e-mail é enviado
+      (o resultado aparece no console). PIN de teste: <code>1234</code>.
+      Para usar de verdade, configure a <code>API_URL</code> em <code>app.js</code> (veja o README).
+    </div>
+
+    <section class="cartao portao">
+      <div class="cartao__cabeca"><h2>🔒 Código dos amigos</h2></div>
+      <p class="dica">Digite o código que foi enviado junto com o link. Você só precisa fazer isso uma vez neste aparelho.</p>
+      <form id="form-portao" class="form form--linha">
+        <input name="codigo" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Código dos amigos" aria-label="Código dos amigos">
+        <button class="btn btn--primario" type="submit">Entrar</button>
+      </form>
+    </section>
+
+    <section class="cartao cartao--revelar" id="painel-revelar" hidden>
+      <div class="cartao__cabeca"><h2>🎁 Seu amigo secreto</h2></div>
+      <div id="revelar-antes">
+        <p>O seu resultado está guardado aqui. Antes de revelar, confira se ninguém está olhando a sua tela. 😉</p>
+        <button class="btn btn--festa" type="button" id="botao-revelar">🎁 Revelar</button>
+      </div>
+      <div id="revelar-depois" hidden>
+        <p class="revelar__aviso" id="revelar-aviso"></p>
+        <p class="revelar__ola">Olá, <strong id="revelar-nome"></strong>! Você tirou:</p>
+        <p class="revelar__amigo" id="revelar-amigo"></p>
+        <p class="revelar__valor" id="revelar-valor" hidden></p>
+        <h3>Gostaria de ganhar</h3>
+        <ul class="revelar__lista" id="revelar-desejos"></ul>
+        <h3>🍗 Você vai levar para a ceia</h3>
+        <ul class="revelar__lista" id="revelar-itens"></ul>
+        <button class="btn" type="button" id="fechar-revelar">Esconder</button>
+      </div>
+    </section>
+
+    <section class="cartao cartao--edicao" id="painel-edicao" hidden>
+      <div class="cartao__cabeca"><h2>✏️ Seus desejos</h2></div>
+      <p class="dica">Editando a lista de <strong id="edicao-nome"></strong>. Enter adiciona um item, o × remove.</p>
+      <form id="form-edicao" class="form">
+        <div class="tags" id="tags-edicao">
+          <input id="input-edicao" maxlength="100" placeholder="Ex.: livro, perfume, vale-presente…" aria-label="Adicionar desejo">
+        </div>
+        <div class="form--linha">
+          <button class="btn btn--primario" type="submit">Salvar desejos</button>
+          <button class="btn" type="button" id="fechar-edicao">Fechar</button>
+        </div>
+      </form>
+      <details class="organizador so-aberto">
+        <summary>Sair do amigo secreto</summary>
+        <p class="dica">Remove o seu cadastro. Só é possível antes do sorteio.</p>
+        <button class="btn btn--perigo" type="button" id="remover-meu-cadastro">Remover meu cadastro</button>
+      </details>
+    </section>
+
+    <section class="cartao">
+      <div class="cartao__cabeca">
+        <h2>🎁 Participantes</h2>
+        <span class="contador" id="cont-participantes">0</span>
+      </div>
+
+      <form id="form-participante" class="form so-aberto">
+        <div class="form__grade">
+          <label class="campo">
+            <span class="campo__rotulo">Nome</span>
+            <input name="nome" required maxlength="60" autocomplete="name" placeholder="Ex.: Maria">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">E-mail <small>(para receber o resultado)</small></span>
+            <input name="email" type="email" required maxlength="120" autocomplete="email" placeholder="maria@gmail.com">
+          </label>
+        </div>
+        <div class="campo">
+          <span class="campo__rotulo">O que gostaria de ganhar <small>(uma ou mais opções — Enter para adicionar)</small></span>
+          <div class="tags" id="tags-desejos">
+            <input id="input-desejo" maxlength="100" placeholder="Ex.: livro, perfume, vale-presente…" aria-label="Adicionar desejo">
+          </div>
+        </div>
+        <button class="btn btn--primario" type="submit">Cadastrar</button>
+      </form>
+
+      <ul id="lista-participantes" class="lista"></ul>
+    </section>
+
+    <section class="cartao cartao--votacao" id="votacao">
+      <div class="cartao__cabeca"><h2>💰 Valor do presente</h2></div>
+      <div id="votacao-conteudo"></div>
+
+      <form id="form-pedir-voto" class="form form--linha" hidden>
+        <select name="pessoa" required aria-label="Seu nome"></select>
+        <button class="btn" type="submit">Reenviar meu link de voto</button>
+      </form>
+
+      <details class="organizador">
+        <summary>Área do organizador</summary>
+        <form id="form-abrir-votacao" class="form">
+          <p class="dica">Escreva as opções de valor em euros, separadas por vírgula. Todos os participantes recebem um e-mail com o link para votar.</p>
+          <input name="opcoes" required maxlength="200" placeholder="Ex.: 20, 30, 50 (vira 20 €, 30 €, 50 €)" aria-label="Opções de valor">
+          <div class="form--linha">
+            <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+            <button class="btn btn--primario" type="submit">Abrir votação e avisar todos</button>
+          </div>
+        </form>
+        <div id="votacao-gerenciar" hidden>
+          <h3>Lembrar quem ainda não votou</h3>
+          <form id="form-lembrar-votacao" class="form form--linha">
+            <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+            <button class="btn" type="submit">Enviar lembrete</button>
+          </form>
+          <h3>Encerrar a votação</h3>
+          <form id="form-encerrar-votacao" class="form">
+            <select name="opcao" required aria-label="Valor combinado"></select>
+            <div class="form--linha">
+              <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+              <button class="btn btn--festa" type="submit">Encerrar e avisar todos</button>
+            </div>
+          </form>
+        </div>
+      </details>
+    </section>
+
+    <section class="cartao">
+      <div class="cartao__cabeca">
+        <h2>🍗 Ceia — o que levar</h2>
+        <span class="contador" id="cont-alimentos">0</span>
+      </div>
+      <p class="dica so-aberto">Qualquer pessoa pode adicionar ou remover itens. Quer levar algo específico? Toque em <strong>🙋 Eu levo</strong>. O que ninguém escolher é sorteado de forma equilibrada.</p>
+
+      <form id="form-alimento" class="form form--linha so-aberto">
+        <input name="item" required maxlength="80" placeholder="Ex.: farofa, pudim, refrigerante 2L" aria-label="Alimento">
+        <button class="btn btn--primario" type="submit">Adicionar</button>
+      </form>
+
+      <ul id="lista-alimentos" class="lista lista--comidas"></ul>
+      <div id="divisao-alimentos" class="divisao" hidden></div>
+    </section>
+
+    <section class="cartao cartao--sorteio">
+      <div class="cartao__cabeca"><h2>🎲 Sorteio</h2></div>
+
+      <div id="sorteio-aberto">
+        <p id="resumo-sorteio" class="resumo"></p>
+        <form id="form-sortear" class="form form--linha">
+          <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+          <button class="btn btn--festa" type="submit">Realizar sorteio</button>
+        </form>
+        <p class="dica">Ninguém vê o resultado do amigo secreto aqui, nem quem clicou no botão. Cada pessoa recebe o seu por e-mail.</p>
+      </div>
+
+      <div id="sorteio-feito" hidden>
+        <p class="resumo">✅ Sorteio realizado em <strong id="data-sorteio"></strong>. Cada participante recebeu um e-mail com um link pessoal para descobrir o seu amigo secreto e o que levar para a ceia.</p>
+
+        <h3>Não recebeu ou apagou o e-mail?</h3>
+        <p class="dica">Confira também a caixa de spam. Ou peça para reenviar:</p>
+        <form id="form-reenviar" class="form form--linha">
+          <input name="email" type="email" required placeholder="Seu e-mail cadastrado" aria-label="Seu e-mail cadastrado">
+          <button class="btn" type="submit">Reenviar meu resultado</button>
+        </form>
+
+        <details class="organizador">
+          <summary>Área do organizador</summary>
+          <p class="dica">Desfazer o sorteio reabre o cadastro. Um novo sorteio enviará novos e-mails para todos.</p>
+          <form id="form-desfazer" class="form form--linha">
+            <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+            <button class="btn btn--perigo" type="submit">Desfazer sorteio</button>
+          </form>
+        </details>
+      </div>
+    </section>
+
+    <section class="cartao" id="recadinhos">
+      <div class="cartao__cabeca"><h2>💬 Recadinhos</h2></div>
+      <ul id="lista-mensagens" class="chat" aria-live="polite"></ul>
+      <form id="form-chat" class="form chat__form">
+        <input name="nome" required maxlength="40" autocomplete="name" placeholder="Seu nome" aria-label="Seu nome">
+        <div id="chat-respondendo" class="chat__respondendo" hidden>
+          <div><strong>↩️ Respondendo a <span id="respondendo-nome"></span></strong><span id="respondendo-texto"></span></div>
+          <button type="button" id="cancelar-resposta" class="mensagem__apagar" aria-label="Cancelar resposta">✕</button>
+        </div>
+        <div class="form--linha">
+          <input name="texto" required maxlength="300" autocomplete="off" placeholder="Escreva uma mensagem…" aria-label="Mensagem">
+          <button class="btn btn--primario" type="submit">Enviar</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="rodape">Feito com carinho para os amigos 🎄</footer>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="dialogo-levar" class="dialogo">
+    <form method="dialog" id="form-levar" class="form">
+      <h3>🙋 Quem vai levar <span id="levar-item"></span>?</h3>
+      <select name="pessoa" required aria-label="Quem vai levar"></select>
+      <div class="form--linha">
+        <button class="btn" value="cancelar" formnovalidate>Cancelar</button>
+        <button class="btn btn--primario" value="ok">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Mesmo código da página da família, ligado ao Apps Script e à planilha dos amigos. -->
+  <script>
+    window.GRUPO = {
+      apiUrl: 'https://script.google.com/macros/s/AKfycbyH4Lw24BA5p-7BGr1_SadaaVwmciglmECg7vIFZ2O6IWM8MN0MufKed38DIQJODvZ0/exec',
+      prefixo: 'amigo-secreto-amigos',
+      evento: 'Amigo Secreto dos Amigos',
+    };
+  </script>
+  <script src="../app.js"></script>
+</body>
+</html>
