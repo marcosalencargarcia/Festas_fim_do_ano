@@ -45,6 +45,7 @@
         <p class="revelar__aviso" id="revelar-aviso"></p>
         <p class="revelar__ola">Olá, <strong id="revelar-nome"></strong>! Você tirou:</p>
         <p class="revelar__amigo" id="revelar-amigo"></p>
+        <p class="revelar__valor" id="revelar-valor" hidden></p>
         <h3>Gostaria de ganhar</h3>
         <ul class="revelar__lista" id="revelar-desejos"></ul>
         <h3>🍗 Você vai levar para a ceia</h3>
@@ -99,6 +100,43 @@
       </form>
 
       <ul id="lista-participantes" class="lista"></ul>
+    </section>
+
+    <section class="cartao cartao--votacao" id="votacao">
+      <div class="cartao__cabeca"><h2>💰 Valor do presente</h2></div>
+      <div id="votacao-conteudo"></div>
+
+      <form id="form-pedir-voto" class="form form--linha" hidden>
+        <select name="pessoa" required aria-label="Seu nome"></select>
+        <button class="btn" type="submit">Reenviar meu link de voto</button>
+      </form>
+
+      <details class="organizador">
+        <summary>Área do organizador</summary>
+        <form id="form-abrir-votacao" class="form">
+          <p class="dica">Escreva as opções de valor separadas por vírgula. Todos os participantes recebem um e-mail com o link para votar.</p>
+          <input name="opcoes" required maxlength="200" placeholder="Ex.: R$ 50, R$ 100, R$ 150" aria-label="Opções de valor">
+          <div class="form--linha">
+            <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+            <button class="btn btn--primario" type="submit">Abrir votação e avisar todos</button>
+          </div>
+        </form>
+        <div id="votacao-gerenciar" hidden>
+          <h3>Lembrar quem ainda não votou</h3>
+          <form id="form-lembrar-votacao" class="form form--linha">
+            <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+            <button class="btn" type="submit">Enviar lembrete</button>
+          </form>
+          <h3>Encerrar a votação</h3>
+          <form id="form-encerrar-votacao" class="form">
+            <select name="opcao" required aria-label="Valor combinado"></select>
+            <div class="form--linha">
+              <input name="pin" type="password" required autocomplete="off" placeholder="PIN do organizador" aria-label="PIN do organizador">
+              <button class="btn btn--festa" type="submit">Encerrar e avisar todos</button>
+            </div>
+          </form>
+        </div>
+      </details>
     </section>
 
     <section class="cartao">

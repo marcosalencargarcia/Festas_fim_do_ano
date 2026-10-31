@@ -38,6 +38,10 @@ const ABA_PARTICIPANTES = 'Participantes';
 const ABA_ALIMENTOS = 'Alimentos';
 const ABA_MENSAGENS = 'Mensagens';
 const PROP_SORTEIO = 'sorteio'; // JSON { pares: { idQuemDa: idQuemRecebe }, data }
+// JSON { opcoes: [rótulos], votos: { idParticipante: índice }, tokens: { idParticipante: token },
+//        aberta, valorFinal, criadaEm }
+const PROP_VOTACAO = 'votacao';
+const MAX_OPCOES_VOTACAO = 6;
 
 // ===== Entrada HTTP =====
 function doGet() {
@@ -61,7 +65,7 @@ function doPost(e) {
       sortear, reenviar, desfazerSorteio,
       pedirLinkEdicao, abrirEdicao, salvarDesejos, removerMeuCadastro,
       escolherAlimento, soltarAlimento, enviarMensagem, apagarMensagem,
-      revelar,
+      revelar, abrirVotacao, abrirVoto, votar, reenviarVoto, lembrarVotacao, encerrarVotacao,
     };
     const acao = acoes[req.action];
     if (!acao) throw new Error('Ação desconhecida.');
@@ -103,7 +107,20 @@ function addParticipante(req) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-mail inválido.');
   if (lerParticipantes().some(p => p.email === email)) throw new Error('Este e-mail já está cadastrado.');
 
-  abaParticipantes().appendRow([Utilities.getUuid(), celula(nome), email, celula(desejos.join('\n')), new Date()]);
+  const id = Utilities.getUuid();
+  abaParticipantes().appendRow([id, celula(nome), email, celula(desejos.join('\n')), new Date()]);
+
+  // Quem chega com a votação do valor aberta também recebe o seu link para votar.
+  const votacao = lerVotacao();
+  if (votacao && votacao.aberta) {
+    votacao.tokens[id] = novoToken();
+    salvarVotacao(votacao);
+    try {
+      enviarConviteVotacao({ id, nome, email }, votacao);
+    } catch (err) {
+      console.warn('Convite da votação não enviado: ' + err.message);
+    }
+  }
   return estado();
 }
 
@@ -405,6 +422,141 @@ function apagarMensagem(req) {
   return estado();
 }
 
+// ===== Votação do valor dos presentes =====
+// Cada participante vota por um link pessoal enviado por e-mail, então ninguém vota duas vezes
+// nem no lugar de outra pessoa. O voto pode ser trocado enquanto a votação estiver aberta.
+function abrirVotacao(req) {
+  exigirPin(req.pin);
+  const atual = lerVotacao();
+  if (atual && atual.aberta) throw new Error('Já existe uma votação aberta. Encerre-a antes de abrir outra.');
+
+  const opcoes = [];
+  (Array.isArray(req.opcoes) ? req.opcoes : []).map(o => texto(o, 30)).filter(Boolean).forEach(o => {
+    if (!opcoes.some(x => x.toLowerCase() === o.toLowerCase())) opcoes.push(o);
+  });
+  if (opcoes.length < 2) throw new Error('Informe pelo menos 2 opções de valor.');
+  if (opcoes.length > MAX_OPCOES_VOTACAO) throw new Error(`Use no máximo ${MAX_OPCOES_VOTACAO} opções.`);
+
+  const participantes = lerParticipantes();
+  if (!participantes.length) throw new Error('Ainda não há participantes para votar.');
+  if (MailApp.getRemainingDailyQuota() < participantes.length) {
+    throw new Error('A cota diária de e-mails do Gmail não é suficiente. Tente novamente amanhã.');
+  }
+
+  const votacao = { opcoes, votos: {}, tokens: {}, aberta: true, valorFinal: '', criadaEm: new Date().toISOString() };
+  participantes.forEach(p => { votacao.tokens[p.id] = novoToken(); });
+  salvarVotacao(votacao);
+
+  const falhas = [];
+  participantes.forEach(p => {
+    try {
+      enviarConviteVotacao(p, votacao);
+    } catch (err) {
+      falhas.push(p.nome);
+    }
+  });
+  return Object.assign(estado(), { envio: { total: participantes.length, falhas } });
+}
+
+function abrirVoto(req) {
+  const { votacao, p } = votantePorToken(req.token);
+  const voto = votacao.votos[p.id];
+  return { nome: p.nome, voto: voto == null ? null : voto };
+}
+
+function votar(req) {
+  const { votacao, p } = votantePorToken(req.token);
+  if (!votacao.aberta) throw new Error('A votação já foi encerrada.');
+  const opcao = Number(req.opcao);
+  if (!(opcao >= 0 && opcao < votacao.opcoes.length)) throw new Error('Escolha uma das opções.');
+  votacao.votos[p.id] = opcao;
+  salvarVotacao(votacao);
+  return estado();
+}
+
+function reenviarVoto(req) {
+  const votacao = lerVotacao();
+  if (!votacao || !votacao.aberta) throw new Error('Não há votação aberta.');
+  const p = lerParticipantes().find(x => x.id === String(req.id));
+  if (!p) throw new Error('Participante não encontrado.');
+
+  const cache = CacheService.getScriptCache();
+  const chave = 'voto:' + p.id;
+  if (cache.get(chave)) throw new Error('O link acabou de ser enviado para este e-mail. Aguarde 5 minutos.');
+  if (!votacao.tokens[p.id]) {
+    votacao.tokens[p.id] = novoToken();
+    salvarVotacao(votacao);
+  }
+  enviarConviteVotacao(p, votacao);
+  cache.put(chave, '1', INTERVALO_LINK_SEG);
+  return { enviado: true, email: mascarar(p.email) };
+}
+
+// Manda um lembrete só para quem ainda não votou.
+function lembrarVotacao(req) {
+  exigirPin(req.pin);
+  const votacao = lerVotacao();
+  if (!votacao || !votacao.aberta) throw new Error('Não há votação aberta.');
+  const faltam = lerParticipantes().filter(p => votacao.votos[p.id] == null);
+  if (!faltam.length) throw new Error('Todo mundo já votou! 🎉');
+
+  let mudou = false;
+  const falhas = [];
+  faltam.forEach(p => {
+    if (!votacao.tokens[p.id]) {
+      votacao.tokens[p.id] = novoToken();
+      mudou = true;
+    }
+    try {
+      enviarConviteVotacao(p, votacao, true);
+    } catch (err) {
+      falhas.push(p.nome);
+    }
+  });
+  if (mudou) salvarVotacao(votacao);
+  return { total: faltam.length, falhas };
+}
+
+function encerrarVotacao(req) {
+  exigirPin(req.pin);
+  const votacao = lerVotacao();
+  if (!votacao || !votacao.aberta) throw new Error('Não há votação aberta.');
+  const opcao = Number(req.opcao);
+  if (!(opcao >= 0 && opcao < votacao.opcoes.length)) throw new Error('Escolha o valor combinado.');
+
+  votacao.aberta = false;
+  votacao.valorFinal = votacao.opcoes[opcao];
+  salvarVotacao(votacao);
+
+  const falhas = [];
+  lerParticipantes().forEach(p => {
+    try {
+      MailApp.sendEmail({
+        to: p.email,
+        subject: `💰 Valor do presente combinado: ${votacao.valorFinal} — ${NOME_EVENTO}`,
+        htmlBody: moldura(`Olá, ${esc(p.nome)}! 💰`, `
+          <p style="margin:0 0 12px">A votação terminou. O valor combinado para o presente do amigo secreto é:</p>
+          <p style="margin:0 0 16px;font-size:28px;font-weight:bold;color:#b91c1c;text-align:center">${esc(votacao.valorFinal)}</p>
+          ${botaoHtml(URL_PAGINA + '#votacao', 'Ver a votação')}`),
+        name: 'Amigo Secreto da Família',
+      });
+    } catch (err) {
+      falhas.push(p.nome);
+    }
+  });
+  return Object.assign(estado(), { envio: { falhas } });
+}
+
+function votantePorToken(token) {
+  const votacao = lerVotacao();
+  if (!votacao) throw new Error('Não há votação no momento.');
+  const t = String(token || '');
+  const id = t && Object.keys(votacao.tokens).find(k => votacao.tokens[k] === t);
+  const p = id && lerParticipantes().find(x => x.id === id);
+  if (!p) throw new Error('Este link de votação não é válido. Peça um novo na página.');
+  return { votacao, p };
+}
+
 function participantePorToken(token) {
   const id = CacheService.getScriptCache().get('edicao:' + String(token || ''));
   const p = id && lerParticipantes().find(x => x.id === id);
@@ -434,6 +586,22 @@ function estado() {
       responsavel: sorteio ? (nomes[a.responsavelId] || '') : '',
     })),
     mensagens: lerMensagens(),
+    votacao: votacaoPublica(participantes),
+  };
+}
+
+// Mostra quem votou em quê (a ideia é a família chegar a um acordo), mas nunca os links.
+function votacaoPublica(participantes) {
+  const v = lerVotacao();
+  if (!v) return null;
+  return {
+    aberta: v.aberta,
+    valorFinal: v.valorFinal,
+    opcoes: v.opcoes.map((rotulo, i) => ({
+      rotulo,
+      nomes: participantes.filter(p => v.votos[p.id] === i).map(p => p.nome),
+    })),
+    faltam: participantes.filter(p => v.votos[p.id] == null).map(p => p.nome),
   };
 }
 
@@ -460,6 +628,22 @@ function enviarDesejosAtualizados(quem, token) {
       <p style="margin:0 0 16px">O seu amigo secreto atualizou a lista de desejos. Toque no botão para ver a lista nova.</p>
       ${botaoHtml(linkRevelar(token), '🎁 Ver a lista atualizada')}
       <p style="margin:0;font-size:13px;color:#666">Guarde segredo! 🤫</p>`),
+    name: 'Amigo Secreto da Família',
+  });
+}
+
+function enviarConviteVotacao(p, votacao, lembrete) {
+  MailApp.sendEmail({
+    to: p.email,
+    subject: (lembrete ? '⏰ Falta o seu voto: ' : '🗳️ Vote no ') + `valor do presente — ${NOME_EVENTO}`,
+    htmlBody: moldura(`Olá, ${esc(p.nome)}! 🗳️`, `
+      <p style="margin:0 0 12px">${lembrete
+        ? 'A família ainda está esperando o seu voto sobre o valor do presente do amigo secreto.'
+        : 'Vamos combinar juntos quanto cada um vai gastar no presente do amigo secreto. A ideia é todo mundo concordar!'}</p>
+      <p style="margin:0 0 6px">As opções são:</p>
+      <ul style="margin:0 0 16px;padding-left:20px">${votacao.opcoes.map(o => `<li>${esc(o)}</li>`).join('')}</ul>
+      ${botaoHtml(URL_PAGINA + '?votar=' + votacao.tokens[p.id], '🗳️ Votar agora')}
+      <p style="margin:0;font-size:13px;color:#666">O link é só seu. Você pode trocar o voto enquanto a votação estiver aberta.</p>`),
     name: 'Amigo Secreto da Família',
   });
 }
@@ -599,6 +783,15 @@ function linhaPorId(sh, id) {
 
 function removerLinhaPorId(sh, id) {
   sh.deleteRow(linhaPorId(sh, id));
+}
+
+function lerVotacao() {
+  const bruto = PropertiesService.getScriptProperties().getProperty(PROP_VOTACAO);
+  return bruto ? JSON.parse(bruto) : null;
+}
+
+function salvarVotacao(votacao) {
+  PropertiesService.getScriptProperties().setProperty(PROP_VOTACAO, JSON.stringify(votacao));
 }
 
 function lerSorteio() {
