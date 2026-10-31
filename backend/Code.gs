@@ -16,6 +16,8 @@ const PIN_ORGANIZADOR = 'troque-este-pin';
 // Palavra combinada enviada à família junto com o link. Sem ela, a página não mostra nem altera nada.
 const CODIGO_FAMILIA = 'troque-este-codigo';
 const NOME_EVENTO = 'Festas de Fim de Ano da Família';
+// Nome que aparece como remetente dos e-mails.
+const NOME_REMETENTE = 'Amigo Secreto da Família';
 const MIN_PARTICIPANTES = 3;
 // Endereço da página publicada (usado no link de edição enviado por e-mail).
 const URL_PAGINA = 'https://marcosalencargarcia.github.io/Festas_fim_do_ano/';
@@ -55,7 +57,7 @@ function doPost(e) {
   } catch (err) { /* corpo inválido: cai na checagem do código abaixo */ }
 
   if (String(req.codigo || '') !== CODIGO_FAMILIA) {
-    return json({ ok: false, error: 'Código da família incorreto.', codigoInvalido: true });
+    return json({ ok: false, error: 'Código de acesso incorreto.', codigoInvalido: true });
   }
 
   return responder(() => {
@@ -309,7 +311,7 @@ function pedirLinkEdicao(req) {
       <p style="margin:0 0 16px">Use o botão abaixo para editar a sua lista de desejos.</p>
       ${botaoHtml(link, 'Editar meus desejos')}
       <p style="margin:0;font-size:13px;color:#666">O link vale por 6 horas. Se não foi você que pediu, é só ignorar este e-mail.</p>`),
-    name: 'Amigo Secreto da Família',
+    name: NOME_REMETENTE,
   });
   return { enviado: true };
 }
@@ -400,7 +402,7 @@ function avisarResposta(original, nomeQuemResponde, resposta) {
         <div style="margin:0 0 16px;padding:10px 14px;background:#e3efe6;border-radius:8px;white-space:pre-wrap">${esc(resposta)}</div>
         ${botaoHtml(URL_PAGINA + '#recadinhos', '💬 Ver a conversa')}
         <p style="margin:0;font-size:13px;color:#666">Você recebe no máximo um aviso destes a cada 5 minutos.</p>`),
-      name: 'Amigo Secreto da Família',
+      name: NOME_REMETENTE,
     });
   } catch (err) {
     console.warn('Aviso de resposta não enviado: ' + err.message);
@@ -536,7 +538,7 @@ function encerrarVotacao(req) {
           <p style="margin:0 0 12px">A votação terminou. O valor combinado para o presente do amigo secreto é:</p>
           <p style="margin:0 0 16px;font-size:28px;font-weight:bold;color:#b91c1c;text-align:center">${esc(votacao.valorFinal)}</p>
           ${botaoHtml(URL_PAGINA + '#votacao', 'Ver a votação')}`),
-        name: 'Amigo Secreto da Família',
+        name: NOME_REMETENTE,
       });
     } catch (err) {
       falhas.push(p.nome);
@@ -614,7 +616,7 @@ function enviarResultado(quem, token) {
       <p style="margin:0 0 16px">O sorteio do amigo secreto foi feito! Toque no botão para descobrir quem você tirou e o que vai levar para a ceia.</p>
       ${botaoHtml(linkRevelar(token), '🎁 Descobrir meu amigo secreto')}
       <p style="margin:0;font-size:13px;color:#666">Guarde este e-mail: o link vale até a festa. Ele é só seu, não encaminhe para ninguém. 🤫</p>`),
-    name: 'Amigo Secreto da Família',
+    name: NOME_REMETENTE,
   });
 }
 
@@ -626,7 +628,7 @@ function enviarDesejosAtualizados(quem, token) {
       <p style="margin:0 0 16px">O seu amigo secreto atualizou a lista de desejos. Toque no botão para ver a lista nova.</p>
       ${botaoHtml(linkRevelar(token), '🎁 Ver a lista atualizada')}
       <p style="margin:0;font-size:13px;color:#666">Guarde segredo! 🤫</p>`),
-    name: 'Amigo Secreto da Família',
+    name: NOME_REMETENTE,
   });
 }
 
@@ -636,13 +638,13 @@ function enviarConviteVotacao(p, votacao, lembrete) {
     subject: (lembrete ? '⏰ Falta o seu voto: ' : '🗳️ Vote no ') + `valor do presente — ${NOME_EVENTO}`,
     htmlBody: moldura(`Olá, ${esc(p.nome)}! 🗳️`, `
       <p style="margin:0 0 12px">${lembrete
-        ? 'A família ainda está esperando o seu voto sobre o valor do presente do amigo secreto.'
+        ? 'O pessoal ainda está esperando o seu voto sobre o valor do presente do amigo secreto.'
         : 'Vamos combinar juntos quanto cada um vai gastar no presente do amigo secreto. A ideia é todo mundo concordar!'}</p>
       <p style="margin:0 0 6px">As opções são:</p>
       <ul style="margin:0 0 16px;padding-left:20px">${votacao.opcoes.map(o => `<li>${esc(o)}</li>`).join('')}</ul>
       ${botaoHtml(URL_PAGINA + '?votar=' + votacao.tokens[p.id], '🗳️ Votar agora')}
       <p style="margin:0;font-size:13px;color:#666">O link é só seu. Você pode trocar o voto enquanto a votação estiver aberta.</p>`),
-    name: 'Amigo Secreto da Família',
+    name: NOME_REMETENTE,
   });
 }
 

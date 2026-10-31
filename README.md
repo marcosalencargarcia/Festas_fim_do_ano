@@ -75,6 +75,13 @@ Escolha uma opção gratuita:
 
 ---
 
+## Outro grupo (ex.: amigos)
+A pasta [`amigos/`](amigos/index.html) tem uma segunda página, com os mesmos recursos, para um amigo secreto separado: <https://marcosalencargarcia.github.io/Festas_fim_do_ano/amigos/>.
+- Ela usa o mesmo `app.js` e o mesmo `style.css`, então toda melhoria vale para as duas páginas.
+- O bloco `window.GRUPO` no fim do `amigos/index.html` liga a página ao Apps Script dos amigos (`apiUrl`) e separa o que fica guardado no navegador (`prefixo`). Assim os códigos da família e dos amigos não se misturam no mesmo aparelho.
+- O backend é uma cópia do mesmo `backend/Code.gs`, num projeto do Apps Script ligado a uma planilha própria (*Amigo Secreto dos Amigos*). No topo do arquivo mudam `PLANILHA_ID`, `PIN_ORGANIZADOR`, `CODIGO_FAMILIA`, `NOME_EVENTO`, `NOME_REMETENTE` e `URL_PAGINA`.
+- Para criar mais um grupo, copie a pasta `amigos/`, crie outra planilha com o script e troque o `window.GRUPO` da cópia.
+
 ## No dia do sorteio
 1. Confira na página se todos estão cadastrados e se a lista de comidas está completa.
 2. Digite o PIN do organizador e clique em **Realizar sorteio**.

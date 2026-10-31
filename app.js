@@ -1,13 +1,17 @@
 // URL do App da Web do Google Apps Script (termina em /exec). Veja o README.
 // Deixe vazio para usar o modo demonstração (dados só neste navegador, sem e-mails).
-const API_URL = 'https://script.google.com/macros/s/AKfycbzewncunU9JZB5bXP7xJWf5mxeJhTTSDJZjCq75GZ8L4TcTu8-tzG1QRd8_YHPpukT_/exec';
+// Outras páginas (ex.: amigos/index.html) definem window.GRUPO = { apiUrl, prefixo, evento } antes deste arquivo.
+const GRUPO = window.GRUPO || {};
+const API_URL = 'apiUrl' in GRUPO ? GRUPO.apiUrl : 'https://script.google.com/macros/s/AKfycbzewncunU9JZB5bXP7xJWf5mxeJhTTSDJZjCq75GZ8L4TcTu8-tzG1QRd8_YHPpukT_/exec';
+// As páginas ficam no mesmo site e dividem o armazenamento do navegador: cada grupo usa o seu prefixo.
+const PREFIXO = GRUPO.prefixo || 'amigo-secreto';
 
 const $ = sel => document.querySelector(sel);
 let estado = null;
 let ocupado = false;
 
 // ===== Código da família (guardado neste aparelho para não pedir toda vez) =====
-const CHAVE_CODIGO = 'amigo-secreto-codigo';
+const CHAVE_CODIGO = PREFIXO + '-codigo';
 let codigoFamilia = lerCodigo();
 
 function lerCodigo() {
@@ -158,7 +162,7 @@ function renderMensagens(mensagens) {
 }
 
 // ===== Votação do valor dos presentes =====
-const CHAVE_VOTO = 'amigo-secreto-voto';
+const CHAVE_VOTO = PREFIXO + '-voto';
 let tokenVoto = lerLocal(CHAVE_VOTO);
 let meuVoto = null; // { nome, voto } de quem abriu o link pessoal de votação
 
@@ -521,7 +525,7 @@ $('#lista-alimentos').addEventListener('click', e => {
 });
 
 // ===== "Eu levo": escolher o próprio nome para um item =====
-const CHAVE_EU = 'amigo-secreto-eu';
+const CHAVE_EU = PREFIXO + '-eu';
 let itemParaLevar = null;
 
 function abrirDialogoLevar(idItem) {
@@ -552,7 +556,7 @@ $('#form-levar').addEventListener('submit', e => {
 });
 
 // ===== Mini chat =====
-const CHAVE_NOME = 'amigo-secreto-nome';
+const CHAVE_NOME = PREFIXO + '-nome';
 $('#form-chat').nome.value = lerLocal(CHAVE_NOME);
 let respondendoA = null;
 
@@ -733,7 +737,7 @@ function toast(msg, erro = false) {
 // ===== Modo demonstração (sem backend) =====
 // Imita o backend usando o armazenamento do navegador. Os "e-mails" vão para o console.
 function criarApiDemo() {
-  const CHAVE = 'amigo-secreto-demo';
+  const CHAVE = PREFIXO + '-demo';
   const PIN = '1234';
   let db = { participantes: [], alimentos: [], mensagens: [], sorteio: null, votacao: null };
   try { db = JSON.parse(localStorage.getItem(CHAVE)) || db; } catch { /* sem armazenamento */ }
@@ -753,7 +757,7 @@ function criarApiDemo() {
   const publico = () => {
     const nomes = Object.fromEntries(db.participantes.map(p => [p.id, p.nome]));
     return {
-      evento: 'Festas de Fim de Ano da Família',
+      evento: GRUPO.evento || 'Festas de Fim de Ano da Família',
       minParticipantes: 3,
       sorteado: !!db.sorteio,
       dataSorteio: db.sorteio && db.sorteio.data,
