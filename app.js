@@ -631,7 +631,9 @@ $('#form-pedir-voto').addEventListener('submit', async e => {
 $('#form-abrir-votacao').addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
-  const opcoes = form.opcoes.value.split(',').map(s => s.trim()).filter(Boolean);
+  // Número sozinho vira euro ("20" fica "20 €"); o que já tem texto fica como foi escrito.
+  const opcoes = form.opcoes.value.split(',').map(s => s.trim()).filter(Boolean)
+    .map(o => (/^\d+$/.test(o) ? `${o} €` : o));
   if (opcoes.length < 2) return toast('Informe pelo menos 2 opções, separadas por vírgula.', true);
   const n = estado.participantes.length;
   if (!confirm(`Abrir a votação com as opções:\n\n${opcoes.join('\n')}\n\n${n} e-mail(s) serão enviados.`)) return;
