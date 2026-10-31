@@ -844,7 +844,6 @@ function criarApiDemo() {
       aberto();
       item = String(item).trim();
       if (!item) throw new Error('Informe o alimento.');
-      if (db.alimentos.some(a => a.item.toLowerCase() === item.toLowerCase())) throw new Error('Este item já está na lista.');
       db.alimentos.push({ id: id(), item, responsavelId: '' });
     },
     removerAlimento({ id: alvo }) {

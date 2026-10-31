@@ -136,9 +136,7 @@ function addAlimento(req) {
   exigirCadastroAberto();
   const item = texto(req.item, 80);
   if (!item) throw new Error('Informe o alimento.');
-  if (lerAlimentos().some(a => a.item.toLowerCase() === item.toLowerCase())) {
-    throw new Error('Este item já está na lista.');
-  }
+  // Itens repetidos são permitidos (ex.: dois "Refrigerante 2L"); cada um tem o seu "Eu levo".
   abaAlimentos().appendRow([Utilities.getUuid(), celula(item), '', new Date()]);
   return estado();
 }
